@@ -3490,9 +3490,34 @@
   function onInformeFilterChange() {
     informesCurrentPage = 1;
     pendingInformeMapFocusId = null; // filtrar a mano vuelve a la vista general del mapa
+    var qMes = document.getElementById('if-quick-mes'), q7d = document.getElementById('if-quick-7d');
+    if (qMes) qMes.classList.remove('active');
+    if (q7d) q7d.classList.remove('active');
     updateInformeFiltersCount();
     applyInformeFilters();
     if (informesCurrentTab === 'mapa') renderInformesMap();
+  }
+
+  function pad2(n) { return (n < 10 ? '0' : '') + n; }
+  function ymdLocal(d) { return d.getFullYear() + '-' + pad2(d.getMonth() + 1) + '-' + pad2(d.getDate()); }
+
+  // Atajos de fecha en la pestaña Mapa: mes actual / últimos 7 días
+  function applyInformeQuickDateFilter(kind) {
+    var hoy = new Date();
+    var desde;
+    if (kind === 'mes') {
+      desde = ymdLocal(new Date(hoy.getFullYear(), hoy.getMonth(), 1));
+    } else {
+      var d7 = new Date(hoy);
+      d7.setDate(d7.getDate() - 6); // incluye hoy: 7 días en total
+      desde = ymdLocal(d7);
+    }
+    document.getElementById('if-filter-fecha-desde').value = desde;
+    document.getElementById('if-filter-fecha-hasta').value = ymdLocal(hoy);
+    onInformeFilterChange();
+    var qMes = document.getElementById('if-quick-mes'), q7d = document.getElementById('if-quick-7d');
+    if (qMes) qMes.classList.toggle('active', kind === 'mes');
+    if (q7d) q7d.classList.toggle('active', kind === '7d');
   }
   function relocateInformeFiltersWrap(name) {
     var wrap = document.getElementById('if-filters-wrap');
