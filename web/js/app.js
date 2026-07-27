@@ -3757,8 +3757,6 @@
       return isFinite(lat) && isFinite(lng);
     });
 
-    var countEl = document.getElementById('map-points-count');
-    if (countEl) countEl.textContent = rows.length ? '(' + rows.length + ' puntos)' : '(sin puntos con los filtros actuales)';
 
     var focusMarker = null;
     rows.forEach(function(r) {
