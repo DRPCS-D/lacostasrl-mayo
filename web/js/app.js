@@ -1405,12 +1405,27 @@
   }
 
   // ── Searchable dropdown handlers ──
+  // El panel de filtros se posiciona con "right:0" relativo a su botón. Si ese
+  // botón queda cerca del borde izquierdo de la pantalla (poco espacio a la
+  // derecha, como en el toolbar de Mapa) el panel se sale del viewport. Esto
+  // lo re-ancla con un left explícito para que quede siempre visible.
+  function keepFiltersPanelInViewport(panel) {
+    panel.style.left = '';
+    var margin = 12;
+    var rect = panel.getBoundingClientRect();
+    if (rect.left < margin) {
+      panel.style.left = (panel.offsetLeft + (margin - rect.left)) + 'px';
+      panel.style.right = 'auto';
+    } else {
+      panel.style.right = '';
+    }
+  }
   function toggleFiltersPanel(e) {
     if (e && e.stopPropagation) e.stopPropagation();
     var panel = document.getElementById('filters-panel');
     var btn = document.getElementById('btn-filters');
     var willShow = panel.hasAttribute('hidden');
-    if (willShow) { panel.removeAttribute('hidden'); btn.classList.add('active'); }
+    if (willShow) { panel.removeAttribute('hidden'); btn.classList.add('active'); keepFiltersPanelInViewport(panel); }
     else          { panel.setAttribute('hidden', ''); btn.classList.remove('active'); closeAllSdrops(); }
   }
   function closeFiltersPanel() {
@@ -1428,7 +1443,7 @@
     var panel = document.getElementById('filters-panel-clientes');
     var btn = document.getElementById('btn-filters-clientes');
     var willShow = panel.hasAttribute('hidden');
-    if (willShow) { panel.removeAttribute('hidden'); btn.classList.add('active'); }
+    if (willShow) { panel.removeAttribute('hidden'); btn.classList.add('active'); keepFiltersPanelInViewport(panel); }
     else          { panel.setAttribute('hidden', ''); btn.classList.remove('active'); closeAllSdrops(); }
   }
   function clearClienteFilters() {
@@ -3532,7 +3547,7 @@
     var panel = document.getElementById('if-filters-panel');
     var btn = document.getElementById('if-btn-filters');
     var willShow = panel.hasAttribute('hidden');
-    if (willShow) { panel.removeAttribute('hidden'); btn.classList.add('active'); }
+    if (willShow) { panel.removeAttribute('hidden'); btn.classList.add('active'); keepFiltersPanelInViewport(panel); }
     else          { panel.setAttribute('hidden', ''); btn.classList.remove('active'); closeAllSdrops(); }
   }
   function clearAllInformeFilters() {
