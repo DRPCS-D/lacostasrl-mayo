@@ -46,6 +46,7 @@
   var currentInformeLat = null;
   var currentInformeLng = null;
   var informesMap = null;       // instancia Leaflet, se crea una sola vez
+  var pendingInformeMapFocusId = null; // "Ver en mapa": ID a enfocar en el próximo render del mapa
   var informesMarkers = [];     // markers actuales del mapa
   var informesCurrentTab = 'nuevo-informe';
   var informesCurrentPage = 1;
@@ -3204,8 +3205,9 @@
   // ────────────────────────────────────────────
 
   // Cambia entre las 3 sub-pestañas de Informes (Nuevo informe / Informes / Mapa)
-  function switchInformeTab(name) {
+  function switchInformeTab(name, focusId) {
     informesCurrentTab = name;
+    if (name === 'mapa') pendingInformeMapFocusId = focusId || null;
     ['nuevo-informe', 'informes', 'mapa'].forEach(function(t) {
       var tb = document.getElementById('tab-' + t);
       var pb = document.getElementById('panel-' + t);
@@ -3222,7 +3224,7 @@
     } else if (name === 'informes') {
       loadInformes();
     } else if (name === 'mapa') {
-      loadInformes(); // por si nunca se visitó la pestaña Informes en esta sesión
+      if (!allInformes.length) loadInformes(); // primera vez que se entra a Informes en esta sesión
       setTimeout(renderInformesMap, 0); // el contenedor recién queda visible ahora
     }
   }
@@ -3484,6 +3486,7 @@
   var debouncedInformeFilterChange = debounce(onInformeFilterChange, 300);
   function onInformeFilterChange() {
     informesCurrentPage = 1;
+    pendingInformeMapFocusId = null; // filtrar a mano vuelve a la vista general del mapa
     updateInformeFiltersCount();
     applyInformeFilters();
     if (informesCurrentTab === 'mapa') renderInformesMap();
@@ -3561,6 +3564,7 @@
     var countEl = document.getElementById('map-points-count');
     if (countEl) countEl.textContent = rows.length ? '(' + rows.length + ' puntos)' : '(sin puntos con los filtros actuales)';
 
+    var focusMarker = null;
     rows.forEach(function(r) {
       var lat = parseFloat(r['Latitud']), lng = parseFloat(r['Longitud']);
       var popup = '<b>' + esc(r['Cliente']) + '</b><br>' +
@@ -3570,28 +3574,28 @@
       marker.addTo(informesMap);
       marker._informeId = r['ID'];
       informesMarkers.push(marker);
+      if (pendingInformeMapFocusId && r['ID'] === pendingInformeMapFocusId) focusMarker = marker;
     });
 
-    if (rows.length) {
+    if (focusMarker) {
+      // Viene de "Ver en mapa": mantiene el zoom en ese punto aunque este
+      // render se repita (p.ej. por un loadInformes() en segundo plano) hasta
+      // que el usuario cambie de filtro o entre a Mapa de otra forma.
+      informesMap.setView(focusMarker.getLatLng(), 16);
+      focusMarker.openPopup();
+    } else if (rows.length) {
       var bounds = L.latLngBounds(rows.map(function(r) { return [parseFloat(r['Latitud']), parseFloat(r['Longitud'])]; }));
       informesMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
     }
     setTimeout(function() { informesMap.invalidateSize(); }, 0);
   }
 
-  // Desde la tabla: abre el mapa centrado/con popup en el informe elegido
+  // Desde la tabla: abre el mapa centrado/con popup en el informe elegido.
+  // El foco queda "pegado" en renderInformesMap() aunque el panel se
+  // vuelva a renderizar (ver pendingInformeMapFocusId).
   function openInformeInMap(id) {
     switchSection('informes');
-    switchInformeTab('mapa');
-    setTimeout(function() {
-      var r = informesCache[id];
-      if (!r) return;
-      var lat = parseFloat(r['Latitud']), lng = parseFloat(r['Longitud']);
-      if (!isFinite(lat) || !isFinite(lng)) return;
-      informesMap.setView([lat, lng], 16);
-      var marker = informesMarkers.filter(function(m) { return m._informeId === id; })[0];
-      if (marker) marker.openPopup();
-    }, 150);
+    switchInformeTab('mapa', id);
   }
 
   // ── Modal Ver Informe ──
