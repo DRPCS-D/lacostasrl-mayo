@@ -4,7 +4,7 @@ function getDriveFolder() {
   var props = PropertiesService.getScriptProperties();
   var folderId = props.getProperty('DRIVE_FOLDER_ID');
   if (folderId) { try { return DriveApp.getFolderById(folderId); } catch(e) {} }
-  var folder = DriveApp.createFolder('Pedidos La Costa');
+  var folder = DriveApp.createFolder('Mayorista APP');
   props.setProperty('DRIVE_FOLDER_ID', folder.getId());
   return folder;
 }

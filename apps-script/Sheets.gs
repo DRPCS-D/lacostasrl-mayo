@@ -12,7 +12,7 @@ function getOrCreateSpreadsheet() {
   var ss = null;
   if (ssId) { try { ss = SpreadsheetApp.openById(ssId); } catch(e) {} }
   if (!ss) {
-    ss = SpreadsheetApp.create('Pedidos La Costa');
+    ss = SpreadsheetApp.create('Mayorista APP');
     props.setProperty('SPREADSHEET_ID', ss.getId());
   }
   return ss;
