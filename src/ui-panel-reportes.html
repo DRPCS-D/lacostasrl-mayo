@@ -1,0 +1,86 @@
+    <!-- ── Panel: Reportes (Admin / AdminL) ── -->
+    <div class="tab-panel" id="panel-reportes">
+      <div class="card">
+        <div class="records-toolbar">
+          <div class="section-title" style="margin:0">Reportes</div>
+          <div class="rep-filters">
+            <div class="rep-filter-group">
+              <label for="rep-from">Desde</label>
+              <input type="date" id="rep-from" class="rep-select" onchange="renderReportes()">
+            </div>
+            <div class="rep-filter-group">
+              <label for="rep-to">Hasta</label>
+              <input type="date" id="rep-to" class="rep-select" onchange="renderReportes()">
+            </div>
+            <div class="rep-filter-group">
+              <label for="rep-tipo">Tipo</label>
+              <select id="rep-tipo" class="rep-select" onchange="renderReportes()">
+                <option value="">Todos</option>
+                <option value="SHOW ROOM">SHOW ROOM</option>
+                <option value="STOCK">STOCK</option>
+                <option value="MALETEO">MALETEO</option>
+              </select>
+            </div>
+            <button class="btn-refresh btn-icon-only" onclick="loadReportes(true)" title="Actualizar" aria-label="Actualizar">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="23 4 23 10 17 10"/><path d="M20.5 14.5A9 9 0 1 1 18 6.3"/>
+              </svg>
+            </button>
+            <button class="btn-refresh btn-icon-only" onclick="openRepExportDrawer()" title="Exportar PDF / Excel" aria-label="Exportar PDF / Excel">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M4 21v-6a2 2 0 0 1 2-2h12a2 2 0 0 1 2 2v6"/>
+                <polyline points="4 8 4 4 20 4 20 8"/>
+                <line x1="9" y1="14" x2="15" y2="14"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+
+        <div class="kpi-row" id="rep-kpis">
+          <div class="kpi-card"><div class="kpi-label">Pedidos del período</div><div class="kpi-value" id="rep-kpi-count">0</div></div>
+          <div class="kpi-card"><div class="kpi-label">Total Pares</div><div class="kpi-value" id="rep-kpi-pares">0</div></div>
+          <div class="kpi-card"><div class="kpi-label">Suma Total Precio</div><div class="kpi-value" id="rep-kpi-total">0</div></div>
+          <div class="kpi-card"><div class="kpi-label">Ticket promedio</div><div class="kpi-value" id="rep-kpi-avg">0</div></div>
+        </div>
+
+        <div class="rep-section">
+          <div class="rep-section-title">Evolución mensual</div>
+          <div class="rep-legend">
+            <span class="rep-leg-dot rep-leg-amount"></span> Monto
+            <span class="rep-leg-dot rep-leg-count"></span> Pedidos
+          </div>
+          <div id="rep-evolution" class="rep-chart-wrap"></div>
+        </div>
+
+        <div class="reportes-grid">
+          <div class="rep-section">
+            <div class="rep-section-title">Top 10 Clientes (por monto)</div>
+            <div id="rep-top-clientes" class="rep-bars"></div>
+          </div>
+          <div class="rep-section">
+            <div class="rep-section-title">Top 10 Marcas (por monto)</div>
+            <div id="rep-top-marcas" class="rep-bars"></div>
+          </div>
+          <div class="rep-section">
+            <div class="rep-section-title">Top 10 Vendedores (por monto)</div>
+            <div id="rep-top-vendedores" class="rep-bars"></div>
+          </div>
+          <div class="rep-section">
+            <div class="rep-section-title">Vendedores (por monto)</div>
+            <div id="rep-tipos" class="rep-donut-wrap"></div>
+          </div>
+        </div>
+
+        <div class="reportes-grid">
+          <div class="rep-section">
+            <div class="rep-section-title">Top 10 Ciudades (por monto)</div>
+            <div id="rep-top-ciudades" class="rep-bars"></div>
+          </div>
+          <div class="rep-section">
+            <div class="rep-section-title">Top 10 Zonas (por monto)</div>
+            <div id="rep-top-zonas" class="rep-bars"></div>
+          </div>
+        </div>
+      </div>
+    </div>
+

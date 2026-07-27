@@ -1,0 +1,111 @@
+  // CLIENTES — Gestión (Admin only)
+  // ────────────────────────────────────────────
+  function loadClientes() {
+    setTableLoading('panel-clientes', true);
+    google.script.run
+      .withSuccessHandler(function(rows) {
+        setTableLoading('panel-clientes', false);
+        allClients = rows || [];
+        populateSelectFilter('filter-cliente-ciudad', allClients, 'ciudad', 'Todas las ciudades');
+        populateSelectFilter('filter-cliente-zona',   allClients, 'zona',   'Todas las zonas');
+        updateClienteFiltersCount();
+        renderClientes();
+      })
+      .withFailureHandler(handleAuthError(function(err) {
+        setTableLoading('panel-clientes', false);
+        document.getElementById('clientes-body').innerHTML =
+          '<tr><td colspan="4" class="empty-table">Error: ' + (err ? err.message : '') + '</td></tr>';
+      }))
+      .listClients(authToken);
+  }
+
+  // Filtra allClients por el buscador de texto + los sdrops de Ciudad/Zona. Compartido entre
+  // renderClientes() (tabla) y getClienteViewNavList() (prev/next del modal detalle) para que
+  // ambos reflejen exactamente el mismo conjunto filtrado.
+  function getFilteredClientRows() {
+    var q = (document.getElementById('search-clientes').value || '').toLowerCase().trim();
+    var selCiudad = filterSelections['filter-cliente-ciudad'] || [];
+    var selZona   = filterSelections['filter-cliente-zona']   || [];
+    return allClients.filter(function(c) {
+      if (q) {
+        var matchQ = String(c.codigo || '').toLowerCase().indexOf(q) !== -1
+            || String(c.razonSocial || '').toLowerCase().indexOf(q) !== -1
+            || String(c.nombreFantasia || '').toLowerCase().indexOf(q) !== -1
+            || String(c.ciudad || '').toLowerCase().indexOf(q) !== -1
+            || String(c.zona || '').toLowerCase().indexOf(q) !== -1;
+        if (!matchQ) return false;
+      }
+      if (selCiudad.length && selCiudad.indexOf(c.ciudad) === -1) return false;
+      if (selZona.length && selZona.indexOf(c.zona) === -1) return false;
+      return true;
+    });
+  }
+
+  function renderClientes() {
+    clientesCache = {};
+    allClients.forEach(function(c) {
+      if (c.codigo) clientesCache[String(c.codigo).toLowerCase()] = c;
+    });
+    var rows = getFilteredClientRows();
+    rows = rows.slice().sort(function(a, b) {
+      // Orden por código de mayor a menor (descendente). numeric:true para que "10" > "9"
+      return String(b.codigo || '').localeCompare(String(a.codigo || ''), 'es', { numeric: true });
+    });
+    var tbody = document.getElementById('clientes-body');
+    if (!rows.length) {
+      var hasFilter = !!(document.getElementById('search-clientes').value || '').trim()
+        || (filterSelections['filter-cliente-ciudad'] || []).length
+        || (filterSelections['filter-cliente-zona']   || []).length;
+      tbody.innerHTML = '<tr><td colspan="5" class="empty-table">' +
+        (hasFilter ? 'Sin resultados' : 'No hay clientes cargados') + '</td></tr>';
+      return;
+    }
+    tbody.innerHTML = rows.map(function(c) {
+      var safeCod = esc(c.codigo);
+      return '<tr data-cod="' + safeCod + '" tabindex="0" role="button" aria-label="Ver cliente" ' +
+        'onclick="openViewClienteModal(\'' + safeCod + '\')" ' +
+        'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openViewClienteModal(\'' + safeCod + '\');}">' +
+        '<td style="font-weight:700;color:var(--primary)">' + safeCod + '</td>' +
+        '<td style="font-weight:600">' + esc(c.razonSocial) + '</td>' +
+        '<td>' + esc(c.nombreFantasia || '') + '</td>' +
+        '<td>' + esc(c.ciudad || '') + '</td>' +
+        '<td>' + esc(c.zona || '') + '</td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  function openNewClienteModal() {
+    editingClienteCodigo = null;
+    document.getElementById('cliente-modal-title').textContent = 'Nuevo Cliente';
+    document.getElementById('c-codigo').value = '';
+    document.getElementById('c-codigo').disabled = false;
+    document.getElementById('c-razon').value = '';
+    document.getElementById('c-fantasia').value = '';
+    document.getElementById('c-ciudad').value = '';
+    document.getElementById('c-zona').value = '';
+    document.getElementById('modal-cliente-overlay').classList.remove('hidden');
+    setTimeout(function() { document.getElementById('c-codigo').focus(); }, 80);
+  }
+
+  function openEditClienteModal(codigo) {
+    var c = clientesCache[String(codigo).toLowerCase()];
+    if (!c) return;
+    editingClienteCodigo = c.codigo;
+    document.getElementById('cliente-modal-title').textContent = 'Editar Cliente';
+    document.getElementById('c-codigo').value = c.codigo || '';
+    document.getElementById('c-codigo').disabled = false;
+    document.getElementById('c-razon').value = c.razonSocial || '';
+    document.getElementById('c-fantasia').value = c.nombreFantasia || '';
+    document.getElementById('c-ciudad').value = c.ciudad || '';
+    document.getElementById('c-zona').value = c.zona || '';
+    var mco = document.getElementById('modal-cliente-overlay');
+    mco.classList.remove('hidden');
+    focusFirstField(mco);
+  }
+
+  function closeClienteModal() {
+    document.getElementById('modal-cliente-overlay').classList.add('hidden');
+    editingClienteCodigo = null;
+  }
+
+  // ────────────────────────────────────────────

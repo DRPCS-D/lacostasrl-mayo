@@ -1,0 +1,230 @@
+  // VIEW CLIENTE (solo lectura, todos los usuarios)
+  // ────────────────────────────────────────────
+  var viewingClienteCodigo = null;
+
+  function openViewClienteModal(codigo) {
+    var c = clientesCache[String(codigo).toLowerCase()];
+    if (!c) return;
+    viewingClienteCodigo = c.codigo;
+    document.getElementById('vc-codigo').textContent   = c.codigo || '';
+    document.getElementById('vc-razon').textContent    = c.razonSocial || '';
+    document.getElementById('vc-fantasia').textContent = c.nombreFantasia || '';
+    document.getElementById('vc-ciudad').textContent   = c.ciudad || '';
+    document.getElementById('vc-zona').textContent     = c.zona || '';
+    document.getElementById('btn-view-cliente-edit').style.display   = (authRol === 'Admin') ? '' : 'none';
+    document.getElementById('btn-view-cliente-delete').style.display = (authRol === 'Admin') ? '' : 'none';
+    renderClienteOrdersStats(c);
+    updateClienteViewNavState();
+    document.getElementById('modal-view-cliente-overlay').classList.remove('hidden');
+  }
+
+  // Pedidos del cliente visibles para el usuario actual: allRecords ya viene filtrado
+  // por rol desde el backend (User ve solo los suyos, Admin/AdminL ven todos).
+  function getClientOrders(c) {
+    var cod = String(c.codigo || '').trim().toLowerCase();
+    var raz = String(c.razonSocial || '').trim().toLowerCase();
+    var list = (allRecords || []).filter(function(r) {
+      var rCod = String(r['Código Cliente'] || '').trim().toLowerCase();
+      if (rCod) return rCod === cod;
+      return String(r['Cliente'] || '').trim().toLowerCase() === raz;
+    });
+    return list.slice().sort(function(a, b) {
+      return (parseDateDMY(b['Fecha Carga']) || 0) - (parseDateDMY(a['Fecha Carga']) || 0);
+    });
+  }
+
+  function renderClienteOrdersStats(c) {
+    var orders = getClientOrders(c);
+    var pares = 0, monto = 0;
+    orders.forEach(function(o) {
+      pares += parseAmount(o['Total Pares']);
+      monto += parseAmount(o['Total Precio']);
+    });
+    document.getElementById('vc-stat-count').textContent = orders.length;
+    document.getElementById('vc-stat-pares').textContent = formatAmount(pares);
+    document.getElementById('vc-stat-monto').textContent = 'Gs. ' + formatAmount(monto);
+    document.getElementById('vc-orders-title').textContent =
+      (authRol === 'Admin' || authRol === 'AdminL') ? 'Pedidos de este cliente' : 'Tus pedidos con este cliente';
+
+    // Para User (que solo ve sus propios pedidos), sumamos aparte el total general
+    // del cliente entre todos los vendedores, consultando al backend.
+    var globalCard = document.getElementById('vc-kpi-global');
+    if (authRol === 'User') {
+      globalCard.style.display = '';
+      var globalEl = document.getElementById('vc-stat-global-monto');
+      globalEl.textContent = '…';
+      var codigo = c.codigo;
+      google.script.run
+        .withSuccessHandler(function(res) {
+          if (viewingClienteCodigo !== codigo) return; // el usuario ya navegó a otro cliente
+          globalEl.textContent = 'Gs. ' + formatAmount((res && res.total) || 0);
+        })
+        .withFailureHandler(function() {
+          if (viewingClienteCodigo !== codigo) return;
+          globalEl.textContent = '—';
+        })
+        .getClientGlobalTotal(authToken, codigo, c.razonSocial);
+    } else {
+      globalCard.style.display = 'none';
+    }
+
+    var box = document.getElementById('vc-orders-list');
+    if (!orders.length) {
+      box.innerHTML = '<div class="rep-empty">Sin pedidos registrados</div>';
+      return;
+    }
+    box.innerHTML = orders.map(function(o) {
+      var rid = esc(o['ID']);
+      return '<div class="vc-order-row" role="button" tabindex="0" aria-label="Ver pedido" ' +
+        'onclick="openClienteOrderDetail(\'' + rid + '\')" ' +
+        'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openClienteOrderDetail(\'' + rid + '\');}">' +
+        '<span class="vc-order-orden">' + esc(o['N° Orden'] || '—') + '</span>' +
+        '<span class="vc-order-fecha">' + esc(o['Fecha Carga'] || '') + '</span>' +
+        '<span class="vc-order-marca">' + esc(o['Marca'] || '') + '</span>' +
+        '<span class="vc-order-total">Gs ' + formatAmount(parseAmount(o['Total Precio'])) + '</span>' +
+      '</div>';
+    }).join('');
+  }
+
+  function openClienteOrderDetail(id) {
+    closeViewClienteModal();
+    selectRow(id);
+    openViewModal(id);
+  }
+
+  function getClienteViewNavList() {
+    return getFilteredClientRows().slice().sort(function(a, b) {
+      return String(b.codigo || '').localeCompare(String(a.codigo || ''), 'es', { numeric: true });
+    });
+  }
+
+  function updateClienteViewNavState() {
+    var list = getClienteViewNavList();
+    var idx = -1;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] && list[i].codigo === viewingClienteCodigo) { idx = i; break; }
+    }
+    var prevBtn = document.getElementById('view-cliente-prev-btn');
+    var nextBtn = document.getElementById('view-cliente-next-btn');
+    var posEl   = document.getElementById('view-cliente-nav-pos');
+    if (idx === -1 || list.length === 0) {
+      if (prevBtn) prevBtn.disabled = true;
+      if (nextBtn) nextBtn.disabled = true;
+      if (posEl)   posEl.textContent = '';
+      return;
+    }
+    if (prevBtn) prevBtn.disabled = (idx === 0);
+    if (nextBtn) nextBtn.disabled = (idx === list.length - 1);
+    if (posEl)   posEl.textContent = (idx + 1) + ' / ' + list.length;
+  }
+
+  function navigateClienteView(direction) {
+    if (!viewingClienteCodigo) return;
+    var list = getClienteViewNavList();
+    var idx = -1;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] && list[i].codigo === viewingClienteCodigo) { idx = i; break; }
+    }
+    if (idx === -1) return;
+    var next = idx + direction;
+    if (next < 0 || next >= list.length) return;
+    openViewClienteModal(list[next].codigo);
+  }
+
+  function closeViewClienteModal() {
+    document.getElementById('modal-view-cliente-overlay').classList.add('hidden');
+    viewingClienteCodigo = null;
+  }
+
+  function switchClienteViewToEdit() {
+    if (!viewingClienteCodigo) return;
+    var codigo = viewingClienteCodigo;
+    closeViewClienteModal();
+    openEditClienteModal(codigo);
+  }
+
+  function deleteCurrentCliente() {
+    if (!viewingClienteCodigo) return;
+    if (authRol !== 'Admin') return;
+    var codigo = viewingClienteCodigo;
+    var c = clientesCache[String(codigo).toLowerCase()] || {};
+    var info = [];
+    if (c.codigo)      info.push('Código: ' + c.codigo);
+    if (c.razonSocial) info.push(c.razonSocial);
+    showConfirm({
+      title: 'Eliminar cliente',
+      message: '¿Confirmás que querés eliminar este cliente? Esta acción no se puede deshacer.',
+      items: info,
+      requireWord: 'eliminar',
+      okText: 'Eliminar',
+      cancelText: 'Cancelar'
+    }).then(function(ok) {
+      if (!ok) return;
+      var btn = document.getElementById('btn-view-cliente-delete');
+      btn.disabled = true; btn.textContent = 'Eliminando...';
+      google.script.run
+        .withSuccessHandler(function() {
+          btn.disabled = false; btn.textContent = 'Borrar';
+          showToast('Cliente eliminado', 'success');
+          closeViewClienteModal();
+          loadClientes();
+          refreshClientsCache();
+        })
+        .withFailureHandler(handleAuthError(function(err) {
+          btn.disabled = false; btn.textContent = 'Borrar';
+          showToast('Error: ' + (err ? err.message : 'desconocido'), 'error');
+        }))
+        .deleteClient(authToken, codigo);
+    });
+  }
+
+  document.getElementById('modal-view-cliente-overlay').addEventListener('mousedown', function(e) {
+    if (e.target === this) closeViewClienteModal();
+  });
+
+  document.addEventListener('keydown', function(e) {
+    var overlay = document.getElementById('modal-view-cliente-overlay');
+    if (!overlay || overlay.classList.contains('hidden')) return;
+    if (e.key === 'ArrowLeft')  { e.preventDefault(); navigateClienteView(-1); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); navigateClienteView(1);  }
+  });
+
+  function saveCliente() {
+    var data = {
+      codigo:         document.getElementById('c-codigo').value.trim(),
+      razonSocial:    document.getElementById('c-razon').value.trim(),
+      nombreFantasia: document.getElementById('c-fantasia').value.trim(),
+      ciudad:         document.getElementById('c-ciudad').value.trim(),
+      zona:           document.getElementById('c-zona').value.trim()
+    };
+    var btn = document.getElementById('btn-cliente-save');
+    btn.disabled = true; btn.textContent = 'Guardando...';
+    var done = function(msg) {
+      btn.disabled = false; btn.textContent = 'Guardar';
+      closeClienteModal();
+      loadClientes();
+      refreshClientsCache(); // mantener autocomplete sincronizado
+      showToast(msg, 'success');
+    };
+    var fail = function(err) {
+      btn.disabled = false; btn.textContent = 'Guardar';
+      showToast('Error: ' + (err ? err.message : ''), 'error');
+    };
+    if (editingClienteCodigo) {
+      google.script.run
+        .withSuccessHandler(function() { done('Cliente actualizado'); })
+        .withFailureHandler(handleAuthError(fail))
+        .updateClient(authToken, editingClienteCodigo, data);
+    } else {
+      google.script.run
+        .withSuccessHandler(function() { done('Cliente creado'); })
+        .withFailureHandler(handleAuthError(fail))
+        .createClient(authToken, data);
+    }
+  }
+
+  document.getElementById('modal-cliente-overlay').addEventListener('mousedown', function(e) {
+    if (e.target === this) closeClienteModal();
+  });
+
+  // ────────────────────────────────────────────

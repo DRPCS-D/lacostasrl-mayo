@@ -1,0 +1,97 @@
+  // AUTH ACTIONS
+  // ────────────────────────────────────────────
+  function doLogin(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    var username = document.getElementById('login-username').value.trim();
+    var password = document.getElementById('login-password').value;
+    var errEl = document.getElementById('login-error');
+    errEl.textContent = '';
+    if (!username || !password) { errEl.textContent = 'Ingresá usuario y contraseña.'; return false; }
+    var btn = document.getElementById('btn-login');
+    btn.disabled = true; btn.textContent = 'Ingresando...';
+    google.script.run
+      .withSuccessHandler(function(res) {
+        btn.disabled = false; btn.textContent = 'Ingresar';
+        authToken    = res.token;
+        authUsername = res.username;
+        authRol      = res.rol;
+        localStorage.setItem('authToken',    authToken);
+        localStorage.setItem('authUsername', authUsername);
+        localStorage.setItem('authRol',      authRol);
+        launchApp();
+      })
+      .withFailureHandler(function(err) {
+        btn.disabled = false; btn.textContent = 'Ingresar';
+        errEl.textContent = err ? err.message : 'Error al iniciar sesión.';
+      })
+      .login(username, password);
+  }
+
+  function doSetup(e) {
+    if (e && e.preventDefault) e.preventDefault();
+    var username = document.getElementById('setup-username').value.trim();
+    var password = document.getElementById('setup-password').value;
+    var errEl = document.getElementById('setup-error');
+    errEl.textContent = '';
+    var btn = document.getElementById('btn-setup');
+    btn.disabled = true; btn.textContent = 'Creando...';
+    google.script.run
+      .withSuccessHandler(function() {
+        btn.disabled = false; btn.textContent = 'Crear administrador';
+        showScreen('login');
+        showToast('Cuenta creada. Ahora podés ingresar.', 'success');
+      })
+      .withFailureHandler(function(err) {
+        btn.disabled = false; btn.textContent = 'Crear administrador';
+        errEl.textContent = err ? err.message : 'Error al crear la cuenta.';
+      })
+      .createInitialAdmin(username, password);
+  }
+
+  function doLogout() {
+    if (authToken) google.script.run.logout(authToken);
+    clearAuth();
+    closeDrawer();
+    showScreen('login');
+  }
+
+  function clearAuth() {
+    authToken = null; authUsername = null; authRol = null;
+    localStorage.removeItem('authToken');
+    localStorage.removeItem('authUsername');
+    localStorage.removeItem('authRol');
+    resetAppState();
+  }
+
+  // Limpia todo el caché en memoria de la sesión anterior. Sin esto, si un Admin cierra sesión
+  // y otro usuario (con menos permisos) entra en la misma pestaña, la app seguía mostrando
+  // los datos ya cargados del usuario anterior (allRecords, allClients, etc.) hasta hacer F5,
+  // porque preloadRecordsCache() y otros solo cargan si el caché está vacío.
+  function resetAppState() {
+    allRecords = [];
+    recordsCache = {};
+    allClients = [];
+    clientesCache = {};
+    editingClienteCodigo = null;
+    viewingClienteCodigo = null;
+    currentPage = 1;
+    sortState = { column: null, direction: 'asc' };
+    filterSelections = { 'filter-cliente': [], 'filter-marca': [], 'filter-usuario': [], 'filter-tipo': [], 'filter-zona': [],
+      'filter-cliente-ciudad': [], 'filter-cliente-zona': [] };
+    try { sessionStorage.removeItem(FILTER_STATE_KEY); } catch(e) {}
+  }
+
+  // Wraps failure handlers to catch session expiry
+  function handleAuthError(handler) {
+    return function(err) {
+      if (err && err.message && err.message.indexOf('Sesión expirada') !== -1) {
+        clearAuth();
+        showToast('Sesión expirada. Ingresá nuevamente.', 'error');
+        showScreen('login');
+        return;
+      }
+      if (handler) handler(err);
+    };
+  }
+
+  // ────────────────────────────────────────────

@@ -1,0 +1,161 @@
+  // CLIENTES — AUTOCOMPLETE (genérico, sirve para Nuevo Pedido y Editar)
+  // ────────────────────────────────────────────
+  // Contexto por input id: { badgeId, suggestionsId, getCodigo, setCodigo, filtered, activeIdx }
+  var clienteACContexts = {
+    'f-cliente': {
+      badgeId: 'cliente-codigo-badge',
+      suggestionsId: 'cliente-suggestions',
+      ciudadFieldId: 'f-ciudad',
+      getCodigo: function() { return selectedClienteCodigo; },
+      setCodigo: function(v) { selectedClienteCodigo = v; },
+      filtered: [], activeIdx: -1
+    },
+    'e-cliente': {
+      badgeId: 'e-cliente-codigo-badge',
+      suggestionsId: 'e-cliente-suggestions',
+      ciudadFieldId: 'e-ciudad',
+      getCodigo: function() { return selectedEditClienteCodigo; },
+      setCodigo: function(v) { selectedEditClienteCodigo = v; },
+      filtered: [], activeIdx: -1
+    }
+  };
+
+  function filterClients(query) {
+    var q = String(query || '').trim().toLowerCase();
+    if (!q) return [];
+    return allClients.filter(function(c) {
+      return String(c.codigo || '').toLowerCase().indexOf(q) !== -1
+          || String(c.razonSocial || '').toLowerCase().indexOf(q) !== -1
+          || String(c.nombreFantasia || '').toLowerCase().indexOf(q) !== -1;
+    }).slice(0, 10);
+  }
+
+  function renderClienteSuggestions(inputId) {
+    var ctx = clienteACContexts[inputId]; if (!ctx) return;
+    var box = document.getElementById(ctx.suggestionsId);
+    if (!box) return;
+    var list = ctx.filtered;
+    if (!list.length) { box.style.display = 'none'; box.innerHTML = ''; return; }
+    box.innerHTML = list.map(function(c, idx) {
+      return '<div class="autocomplete-item' + (idx === ctx.activeIdx ? ' active' : '') + '" data-idx="' + idx + '">' +
+        '<span class="ac-codigo">' + esc(c.codigo) + '</span>' +
+        '<span class="ac-razon">' + esc(c.razonSocial) + '</span>' +
+        (c.nombreFantasia ? '<span class="ac-fant">' + esc(c.nombreFantasia) + '</span>' : '') +
+      '</div>';
+    }).join('');
+    box.style.display = 'block';
+    Array.prototype.forEach.call(box.querySelectorAll('.autocomplete-item'), function(el) {
+      el.addEventListener('mousedown', function(e) {
+        e.preventDefault(); // evita blur antes del click
+        var idx = parseInt(el.getAttribute('data-idx'), 10);
+        selectCliente(inputId, ctx.filtered[idx]);
+      });
+    });
+  }
+
+  function hideClienteSuggestions(inputId) {
+    var ctx = clienteACContexts[inputId]; if (!ctx) return;
+    var box = document.getElementById(ctx.suggestionsId);
+    if (box) { box.style.display = 'none'; box.innerHTML = ''; }
+    ctx.activeIdx = -1;
+    ctx.filtered = [];
+  }
+
+  function selectCliente(inputId, c) {
+    if (!c) return;
+    var ctx = clienteACContexts[inputId]; if (!ctx) return;
+    var input = document.getElementById(inputId);
+    input.value = c.razonSocial;
+    input.classList.add('filled');
+    ctx.setCodigo(c.codigo);
+    var badge = document.getElementById(ctx.badgeId);
+    if (badge) {
+      badge.textContent = c.codigo;
+      badge.className = 'cliente-badge';
+      badge.style.display = 'inline-block';
+    }
+    if (ctx.ciudadFieldId) {
+      var ciudadEl = document.getElementById(ctx.ciudadFieldId);
+      if (ciudadEl) {
+        ciudadEl.value = c.ciudad || '';
+        ciudadEl.classList.toggle('filled', !!c.ciudad);
+      }
+    }
+    hideClienteSuggestions(inputId);
+  }
+
+  // Borra la selección actual sin tocar el texto del input (usado al recargar / al editar manualmente).
+  function clearClienteSelection(inputId) {
+    var ctx = clienteACContexts[inputId]; if (!ctx) return;
+    if (ctx.getCodigo()) ctx.setCodigo('');
+    var badge = document.getElementById(ctx.badgeId);
+    if (badge) { badge.style.display = 'none'; badge.textContent = ''; }
+    if (ctx.ciudadFieldId) {
+      var ciudadEl = document.getElementById(ctx.ciudadFieldId);
+      if (ciudadEl) { ciudadEl.value = ''; ciudadEl.classList.remove('filled'); }
+    }
+  }
+
+  function onClienteInput(e) {
+    var inputId = e.target.id;
+    var ctx = clienteACContexts[inputId]; if (!ctx) return;
+    // Cualquier edición manual invalida la selección previa
+    if (ctx.getCodigo()) clearClienteSelection(inputId);
+    ctx.filtered = filterClients(e.target.value);
+    ctx.activeIdx = -1;
+    renderClienteSuggestions(inputId);
+  }
+
+  function onClienteFocus(e) {
+    var inputId = e.target.id;
+    var ctx = clienteACContexts[inputId]; if (!ctx) return;
+    if (!e.target.value) return;
+    // Si ya hay un cliente válido seleccionado, no molestar abriendo el dropdown al recibir foco.
+    if (ctx.getCodigo()) return;
+    ctx.filtered = filterClients(e.target.value);
+    renderClienteSuggestions(inputId);
+  }
+
+  function onClienteBlur(e) {
+    var inputId = e.target.id;
+    // Pequeño delay para permitir que un click en una sugerencia se procese
+    setTimeout(function(){ hideClienteSuggestions(inputId); }, 150);
+  }
+
+  function onClienteKey(e) {
+    var inputId = e.target.id;
+    var ctx = clienteACContexts[inputId]; if (!ctx) return;
+    var box = document.getElementById(ctx.suggestionsId);
+    var isOpen = box && box.style.display === 'block' && ctx.filtered.length;
+    if (e.key === 'ArrowDown' && isOpen) {
+      e.preventDefault();
+      ctx.activeIdx = (ctx.activeIdx + 1) % ctx.filtered.length;
+      renderClienteSuggestions(inputId);
+    } else if (e.key === 'ArrowUp' && isOpen) {
+      e.preventDefault();
+      ctx.activeIdx = (ctx.activeIdx <= 0 ? ctx.filtered.length : ctx.activeIdx) - 1;
+      renderClienteSuggestions(inputId);
+    } else if (e.key === 'Enter' && isOpen && ctx.activeIdx >= 0) {
+      e.preventDefault();
+      selectCliente(inputId, ctx.filtered[ctx.activeIdx]);
+    } else if (e.key === 'Escape') {
+      hideClienteSuggestions(inputId);
+    }
+  }
+
+  // Bind autocomplete listeners a un input específico
+  function bindClienteAutocomplete(inputId) {
+    var input = document.getElementById(inputId);
+    if (!input) return;
+    input.addEventListener('input', onClienteInput);
+    input.addEventListener('focus', onClienteFocus);
+    input.addEventListener('blur',  onClienteBlur);
+    input.addEventListener('keydown', onClienteKey);
+  }
+
+  (function() {
+    bindClienteAutocomplete('f-cliente');
+    bindClienteAutocomplete('e-cliente');
+  })();
+
+  // ────────────────────────────────────────────

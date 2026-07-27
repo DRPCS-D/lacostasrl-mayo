@@ -1,0 +1,243 @@
+  // EDIT ORDER (Admin only)
+  // ────────────────────────────────────────────
+  function selectRow(id) {
+    if (!id) return;
+    selectedRowId = id;
+    var tbody = document.getElementById('records-body');
+    if (!tbody) return;
+    tbody.querySelectorAll('tr').forEach(function(tr) {
+      if (tr.getAttribute('data-id') === id) tr.classList.add('row-selected');
+      else                                   tr.classList.remove('row-selected');
+    });
+  }
+
+  function editRecord(id) {
+    var r = recordsCache[id];
+    if (!r) return;
+    editingId = id;
+    document.getElementById('edit-record-id').textContent = 'ID: ' + id;
+    document.getElementById('e-cliente').value    = r['Cliente']     || '';
+    // Cargar la selección de cliente: si el pedido ya tiene Código Cliente y sigue siendo válido,
+    // pre-llenar el badge; si no, queda vacío y el usuario debe re-seleccionar antes de guardar.
+    clearClienteSelection('e-cliente');
+    hideClienteSuggestions('e-cliente');
+    var codPrev = String(r['Código Cliente'] || '').trim();
+    if (codPrev) {
+      var match = allClients.find(function(c) {
+        return String(c.codigo || '').toLowerCase() === codPrev.toLowerCase();
+      });
+      if (match) {
+        selectedEditClienteCodigo = match.codigo;
+        var badge = document.getElementById('e-cliente-codigo-badge');
+        if (badge) {
+          badge.textContent = match.codigo;
+          badge.className = 'cliente-badge';
+          badge.style.display = 'inline-block';
+        }
+      }
+    }
+    document.getElementById('e-nroOrden').value   = r['N° Orden']    || '';
+    document.getElementById('e-nroPedido').value  = stripAccents(r['N° Pedido'] || '');
+    document.getElementById('e-entrega').value    = stripAccents(r['Entrega']   || '');
+    document.getElementById('e-ciudad').value     = String(r['Ciudad']    || '').toUpperCase();
+    document.getElementById('e-direccion').value  = stripAccents(r['Dirección'] || '').toUpperCase();
+    document.getElementById('e-formaPago').value  = stripAccents(r['Forma Pago'] || '');
+    document.getElementById('e-tipo').value       = r['Tipo']        || '';
+    document.getElementById('e-marca').value      = normalizeMarca(r['Marca']     || '');
+    document.getElementById('e-totalPares').value = r['Total Pares'] || '';
+    document.getElementById('e-totalPrecio').value= r['Total Precio']|| '';
+    document.getElementById('e-obs').value        = stripAccents(r['OBS'] || '');
+    // Foto actual del pedido
+    editingCurrentImgId = String(r['Imagen'] || '').trim();
+    resetEditPhotoUI();
+    var meo = document.getElementById('modal-edit-overlay');
+    meo.classList.remove('hidden');
+    focusFirstField(meo);
+  }
+
+  // Renderiza la sección de foto del modal de edición según el estado actual
+  // (foto vigente vs nueva foto pendiente).
+  function resetEditPhotoUI() {
+    var thumb   = document.getElementById('e-photo-thumb');
+    var empty   = document.getElementById('e-photo-empty');
+    var wrap    = thumb.parentElement;
+    var cancel  = document.getElementById('e-photo-cancel');
+    var status  = document.getElementById('e-photo-status');
+    var spinner = document.getElementById('e-photo-spinner');
+    spinner.style.display = 'none';
+    wrap.classList.remove('replaced');
+    cancel.style.display = 'none';
+    status.textContent = '';
+    status.className = '';
+    if (editingNewImageBase64) {
+      thumb.src = 'data:' + editingNewImageMime + ';base64,' + editingNewImageBase64;
+      thumb.style.display = '';
+      empty.style.display = 'none';
+      wrap.classList.add('replaced');
+      cancel.style.display = '';
+      status.textContent = 'Foto nueva lista — se guardará al confirmar';
+      status.className = 'ok';
+    } else if (editingCurrentImgId) {
+      thumb.src = 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(editingCurrentImgId) + '&sz=w400';
+      thumb.style.display = '';
+      empty.style.display = 'none';
+    } else {
+      thumb.src = '';
+      thumb.style.display = 'none';
+      empty.style.display = '';
+    }
+  }
+
+  function handleEditPhotoSelect(e) {
+    var file = e.target.files && e.target.files[0];
+    e.target.value = '';
+    if (!file) return;
+    if (file.size > 20 * 1024 * 1024) {
+      showToast('El archivo supera los 20 MB', 'error');
+      return;
+    }
+    var spinner = document.getElementById('e-photo-spinner');
+    var status  = document.getElementById('e-photo-status');
+    spinner.style.display = '';
+    status.textContent = 'Procesando…';
+    status.className = '';
+    var reader = new FileReader();
+    reader.onload = function(ev) {
+      compressDataUrl(ev.target.result, { autoRotate: true }).then(function(out) {
+        var commaIdx = out.dataUrl.indexOf(',');
+        editingNewImageBase64 = out.dataUrl.substring(commaIdx + 1);
+        editingNewImageMime   = out.mime || 'image/jpeg';
+        resetEditPhotoUI();
+      });
+    };
+    reader.onerror = function() {
+      spinner.style.display = 'none';
+      status.textContent = 'No se pudo leer el archivo';
+      status.className = 'err';
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function cancelEditPhotoChange() {
+    editingNewImageBase64 = null;
+    editingNewImageMime   = null;
+    resetEditPhotoUI();
+  }
+
+  function closeEditModal() {
+    document.getElementById('modal-edit-overlay').classList.add('hidden');
+    editingId = null;
+    editingNewImageBase64 = null;
+    editingNewImageMime   = null;
+    editingCurrentImgId   = null;
+    clearClienteSelection('e-cliente');
+    hideClienteSuggestions('e-cliente');
+  }
+
+  function saveEdit() {
+    if (!editingId) return;
+    var eCliente  = document.getElementById('e-cliente').value.trim();
+    var eOrden    = document.getElementById('e-nroOrden').value.trim();
+    var eTipo     = document.getElementById('e-tipo').value.trim();
+    var eMarca    = document.getElementById('e-marca').value.trim();
+    var ePares    = document.getElementById('e-totalPares').value.trim();
+    var ePrecio   = document.getElementById('e-totalPrecio').value.trim();
+    var missing  = [];
+    var missingIds = [];
+    if (!eCliente)  { missing.push('Cliente');      missingIds.push('e-cliente'); }
+    if (!eOrden)    { missing.push('N° Orden');     missingIds.push('e-nroOrden'); }
+    if (!eTipo)     { missing.push('Tipo');         missingIds.push('e-tipo'); }
+    if (!eMarca)    { missing.push('Marca');        missingIds.push('e-marca'); }
+    if (!ePares)    { missing.push('Total Pares');  missingIds.push('e-totalPares'); }
+    if (!ePrecio)   { missing.push('Total Precio'); missingIds.push('e-totalPrecio'); }
+    if (missing.length) {
+      showToast('Campos obligatorios: ' + missing.join(', '), 'error');
+      flashMissingFields(missingIds);
+      return;
+    }
+    if (!selectedEditClienteCodigo) {
+      showToast('Debe seleccionar un cliente del listado.', 'error');
+      document.getElementById('e-cliente').focus();
+      return;
+    }
+    if (!isValidAmount(eOrden)) {
+      showToast('N° Orden debe ser un número. No se permiten letras ni símbolos.', 'error');
+      document.getElementById('e-nroOrden').focus();
+      return;
+    }
+    if (!isValidAmount(ePares)) {
+      showToast('Total Pares debe ser un número. No se permiten letras ni símbolos.', 'error');
+      document.getElementById('e-totalPares').focus();
+      return;
+    }
+    ePares = formatAmount(parseAmount(ePares));
+    if (!isValidAmount(ePrecio)) {
+      showToast('Total Precio debe ser un número (ej: 9.661.600). No se permiten letras ni símbolos.', 'error');
+      document.getElementById('e-totalPrecio').focus();
+      return;
+    }
+    ePrecio = formatAmount(parseAmount(ePrecio));
+    var btn = document.getElementById('btn-edit-save');
+    btn.disabled = true; btn.textContent = 'Guardando...';
+
+    var payload = {
+      cliente:     eCliente,
+      // El campo RUC ya no se captura en la UI, pero preservamos el valor existente del registro
+      // (si lo hubiera) para no blanquearlo en pedidos viejos al editar.
+      ruc:         (recordsCache[editingId] && recordsCache[editingId]['RUC']) || '',
+      nroOrden:    eOrden,
+      nroPedido:   stripAccents(document.getElementById('e-nroPedido').value.trim()),
+      entrega:     stripAccents(document.getElementById('e-entrega').value.trim()),
+      direccion:   stripAccents(document.getElementById('e-direccion').value.trim()),
+      ciudad:      document.getElementById('e-ciudad').value.trim(),
+      formaPago:   stripAccents(document.getElementById('e-formaPago').value.trim()),
+      tipo:        eTipo,
+      marca:       stripAccents(eMarca),
+      totalPares:  ePares,
+      totalPrecio: ePrecio,
+      obs:         stripAccents(document.getElementById('e-obs').value.trim()),
+      codigoCliente: selectedEditClienteCodigo || ''
+    };
+
+    function doUpdate() {
+      google.script.run
+        .withSuccessHandler(function() {
+          btn.disabled = false; btn.textContent = 'Guardar cambios';
+          showToast('Pedido actualizado', 'success');
+          closeEditModal();
+          loadRecords();
+        })
+        .withFailureHandler(handleAuthError(function(err) {
+          btn.disabled = false; btn.textContent = 'Guardar cambios';
+          showToast('Error: ' + (err ? err.message : ''), 'error');
+        }))
+        .updateOrder(authToken, editingId, payload);
+    }
+
+    if (editingNewImageBase64) {
+      btn.textContent = 'Subiendo foto...';
+      google.script.run
+        .withSuccessHandler(function(res) {
+          payload.imageFileId = res.fileId;
+          btn.textContent = 'Guardando...';
+          doUpdate();
+        })
+        .withFailureHandler(handleAuthError(function(err) {
+          btn.disabled = false; btn.textContent = 'Guardar cambios';
+          showToast('Error subiendo foto: ' + (err ? err.message : ''), 'error');
+        }))
+        .uploadImageOnly(authToken, editingNewImageBase64, editingNewImageMime, {
+          nroOrden:      eOrden,
+          codigoCliente: selectedEditClienteCodigo,
+          cliente:       eCliente
+        });
+    } else {
+      doUpdate();
+    }
+  }
+
+  document.getElementById('modal-edit-overlay').addEventListener('mousedown', function(e) {
+    if (e.target === this) closeEditModal();
+  });
+
+  // ────────────────────────────────────────────

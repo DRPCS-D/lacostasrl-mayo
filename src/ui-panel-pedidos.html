@@ -1,0 +1,164 @@
+    <!-- ── Panel: Pedidos Guardados ── -->
+    <div class="tab-panel" id="panel-guardados">
+      <div class="card">
+        <div class="records-toolbar">
+          <div class="records-toolbar-left">
+            <div class="section-title" style="margin:0">Registros</div>
+          </div>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn-refresh btn-icon-only" onclick="exportToExcel()" title="Exportar a Excel" aria-label="Exportar a Excel">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><polyline points="7 10 12 15 17 10"/><line x1="12" y1="15" x2="12" y2="3"/>
+              </svg>
+            </button>
+            <button class="btn-refresh btn-icon-only" onclick="loadRecords()" title="Actualizar" aria-label="Actualizar">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="23 4 23 10 17 10"/><path d="M20.5 14.5A9 9 0 1 1 18 6.3"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+        <div class="kpi-row">
+          <div class="kpi-card">
+            <div class="kpi-label">Pedidos (filtrados)</div>
+            <div class="kpi-value" id="kpi-count">0</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Total Pares</div>
+            <div class="kpi-value" id="kpi-pares">0</div>
+          </div>
+          <div class="kpi-card">
+            <div class="kpi-label">Suma Total Precio</div>
+            <div class="kpi-value" id="kpi-total">0</div>
+          </div>
+          <div class="kpi-card kpi-card-warn" id="kpi-dup-card" style="display:none">
+            <div class="kpi-label">N° Orden duplicados</div>
+            <div class="kpi-value" id="kpi-dup">0</div>
+          </div>
+        </div>
+        <div class="search-row">
+          <div class="search-wrap">
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+              <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+            </svg>
+            <input type="text" id="search-input" placeholder="Buscar cliente, orden, usuario..." oninput="debouncedFilterChange()">
+          </div>
+          <div class="filters-wrap">
+            <button class="btn-filters" id="btn-filters" onclick="toggleFiltersPanel(event)">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3">
+                <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
+              </svg>
+              Filtros
+              <span class="filters-count" id="filters-count" style="display:none">0</span>
+            </button>
+            <div class="filters-panel" id="filters-panel" hidden>
+          <div class="filters-grid">
+            <div class="sdrop" data-key="Cliente">
+              <button class="sdrop-toggle" type="button" onclick="toggleSdrop(this)">
+                <span class="sdrop-label">Todos los clientes</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="sdrop-panel" hidden>
+                <input type="text" class="sdrop-search" placeholder="Buscar cliente..." oninput="filterSdropOptions(this)">
+                <div class="sdrop-options"></div>
+              </div>
+              <input type="hidden" id="filter-cliente" value="">
+            </div>
+            <div class="sdrop" data-key="Marca">
+              <button class="sdrop-toggle" type="button" onclick="toggleSdrop(this)">
+                <span class="sdrop-label">Todas las marcas</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="sdrop-panel" hidden>
+                <input type="text" class="sdrop-search" placeholder="Buscar marca..." oninput="filterSdropOptions(this)">
+                <div class="sdrop-options"></div>
+              </div>
+              <input type="hidden" id="filter-marca" value="">
+            </div>
+            <div class="sdrop" data-key="Usuario">
+              <button class="sdrop-toggle" type="button" onclick="toggleSdrop(this)">
+                <span class="sdrop-label">Todos los usuarios</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="sdrop-panel" hidden>
+                <input type="text" class="sdrop-search" placeholder="Buscar usuario..." oninput="filterSdropOptions(this)">
+                <div class="sdrop-options"></div>
+              </div>
+              <input type="hidden" id="filter-usuario" value="">
+            </div>
+            <div class="sdrop" data-key="Tipo">
+              <button class="sdrop-toggle" type="button" onclick="toggleSdrop(this)">
+                <span class="sdrop-label">Todos los tipos</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="sdrop-panel" hidden>
+                <input type="text" class="sdrop-search" placeholder="Buscar tipo..." oninput="filterSdropOptions(this)">
+                <div class="sdrop-options"></div>
+              </div>
+              <input type="hidden" id="filter-tipo" value="">
+            </div>
+            <div class="sdrop" data-key="Zona">
+              <button class="sdrop-toggle" type="button" onclick="toggleSdrop(this)">
+                <span class="sdrop-label">Todas las zonas</span>
+                <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5"><polyline points="6 9 12 15 18 9"/></svg>
+              </button>
+              <div class="sdrop-panel" hidden>
+                <input type="text" class="sdrop-search" placeholder="Buscar zona..." oninput="filterSdropOptions(this)">
+                <div class="sdrop-options"></div>
+              </div>
+              <input type="hidden" id="filter-zona" value="">
+            </div>
+          </div>
+          <div class="filters-dates">
+            <div class="filter-date-group">
+              <label for="filter-fecha-desde">Fecha Carga desde</label>
+              <input type="date" id="filter-fecha-desde" onchange="onFilterChange();updateFiltersCount()">
+            </div>
+            <div class="filter-date-group">
+              <label for="filter-fecha-hasta">Fecha Carga hasta</label>
+              <input type="date" id="filter-fecha-hasta" onchange="onFilterChange();updateFiltersCount()">
+            </div>
+          </div>
+          <button class="btn-clear-filters" type="button" onclick="clearAllFilters()">Limpiar filtros</button>
+            </div>
+          </div>
+        </div>
+        <div class="table-wrap">
+          <table>
+            <thead>
+              <tr>
+                <th class="th-sortable" onclick="sortBy('N° Orden')">N° Orden <span class="sort-ind" data-key="N° Orden"></span></th>
+                <th class="th-sortable" onclick="sortBy('Fecha Carga')">Fecha Carga <span class="sort-ind" data-key="Fecha Carga"></span></th>
+                <th class="th-sortable" onclick="sortBy('Cliente')">Cliente <span class="sort-ind" data-key="Cliente"></span></th>
+                <th class="th-sortable" onclick="sortBy('Ciudad')">Ciudad <span class="sort-ind" data-key="Ciudad"></span></th>
+                <th class="th-sortable" onclick="sortBy('Marca')">Marca <span class="sort-ind" data-key="Marca"></span></th>
+                <th class="th-sortable" onclick="sortBy('Usuario')">Usuario <span class="sort-ind" data-key="Usuario"></span></th>
+                <th class="th-sortable" onclick="sortBy('Total Precio')">Total <span class="sort-ind" data-key="Total Precio"></span></th>
+              </tr>
+            </thead>
+            <tbody id="records-body">
+              <tr><td colspan="7" class="empty-table">Cargando registros...</td></tr>
+            </tbody>
+          </table>
+        </div>
+        <div class="pagination" id="pagination-bar" style="display:none">
+          <div class="pagination-info" id="pagination-info"></div>
+          <div class="pagination-controls">
+            <button class="btn-page" id="btn-page-prev" onclick="changePage(-1)" aria-label="Anterior">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="15 18 9 12 15 6"/>
+              </svg>
+              Anterior
+            </button>
+            <span class="pagination-page" id="pagination-page">1 / 1</span>
+            <button class="btn-page" id="btn-page-next" onclick="changePage(1)" aria-label="Siguiente">
+              Siguiente
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="9 18 15 12 9 6"/>
+              </svg>
+            </button>
+          </div>
+        </div>
+      </div>
+    </div>
+

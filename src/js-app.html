@@ -1,0 +1,190 @@
+  // INIT
+  // ────────────────────────────────────────────
+  window.onload = function() {
+    authToken    = localStorage.getItem('authToken');
+    authUsername = localStorage.getItem('authUsername');
+    authRol      = localStorage.getItem('authRol');
+
+    google.script.run
+      .withSuccessHandler(function(usersExist) {
+        if (!usersExist) {
+          showScreen('setup');
+        } else if (!authToken) {
+          showScreen('login');
+        } else {
+          google.script.run
+            .withSuccessHandler(function(sess) {
+              if (sess) {
+                authUsername = sess.username;
+                authRol      = sess.rol;
+                localStorage.setItem('authUsername', authUsername);
+                localStorage.setItem('authRol', authRol);
+                launchApp();
+              } else {
+                clearAuth();
+                showScreen('login');
+              }
+            })
+            .withFailureHandler(function() { clearAuth(); showScreen('login'); })
+            .getSession(authToken);
+        }
+      })
+      .withFailureHandler(function() { showScreen('login'); })
+      .hasUsers();
+  };
+
+  // ────────────────────────────────────────────
+  // SCREEN MANAGEMENT
+  // ────────────────────────────────────────────
+  function showScreen(name) {
+    document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('auth-screen').style.display   = 'none';
+    document.getElementById('app-wrapper').style.display   = 'none';
+
+    if (name === 'login' || name === 'setup') {
+      document.getElementById('auth-screen').style.display  = 'flex';
+      document.getElementById('screen-login').style.display = name === 'login' ? 'block' : 'none';
+      document.getElementById('screen-setup').style.display = name === 'setup' ? 'block' : 'none';
+    } else if (name === 'app') {
+      document.getElementById('app-wrapper').style.display = 'block';
+    }
+  }
+
+  function launchApp() {
+    // Drawer user info
+    document.getElementById('drawer-username').textContent = authUsername;
+    document.getElementById('drawer-role').textContent = (authRol || '').toUpperCase();
+    document.getElementById('drawer-avatar').textContent = (authUsername || '?').charAt(0).toUpperCase();
+    // Admin items
+    var isAdmin   = authRol === 'Admin';
+    var isAdminL  = authRol === 'AdminL';
+    var canSeeAll = isAdmin || isAdminL;
+    // Pestañas admin: visibles para Admin y AdminL (AdminL en modo lectura)
+    document.getElementById('drawer-usuarios').style.display = canSeeAll ? '' : 'none';
+    document.getElementById('drawer-clientes').style.display = '';
+    document.getElementById('drawer-reportes').style.display = canSeeAll ? '' : 'none';
+    // Botones de creación: solo Admin
+    var btnNewUser = document.getElementById('btn-new-user');
+    if (btnNewUser) btnNewUser.style.display = isAdmin ? '' : 'none';
+    var btnNewCli  = document.getElementById('btn-new-cliente');
+    if (btnNewCli)  btnNewCli.style.display  = isAdmin ? '' : 'none';
+    showScreen('app');
+    // Cargar clientes en cache (necesario para autocomplete — todos los usuarios)
+    refreshClientsCache();
+    // Precargar pedidos en cache (necesario para el chequeo de N° Orden duplicado
+    // antes de que el usuario entre a la pestaña Pedidos)
+    preloadRecordsCache();
+    // Entrar a la sección Pedidos por defecto
+    switchSection('pedidos', { skipClose: true });
+  }
+
+  function refreshClientsCache() {
+    google.script.run
+      .withSuccessHandler(function(rows) { allClients = rows || []; })
+      .withFailureHandler(function() { allClients = []; })
+      .listClients(authToken);
+  }
+
+  // Carga silenciosa de pedidos al iniciar la app (no toca la UI de la tabla).
+  // Solo llena allRecords + recordsCache para que el chequeo de duplicados funcione
+  // aunque el usuario nunca haya visitado la pestaña Pedidos en esta sesión.
+  function preloadRecordsCache() {
+    google.script.run
+      .withSuccessHandler(function(rows) {
+        // Si el usuario ya entró a Pedidos y disparó loadRecords antes que esto vuelva,
+        // no pisamos lo recién cargado.
+        if (allRecords && allRecords.length) return;
+        allRecords = rows || [];
+        recordsCache = {};
+        allRecords.forEach(function(r) { if (r['ID']) recordsCache[r['ID']] = r; });
+      })
+      .withFailureHandler(function() {})
+      .getOrders(authToken);
+  }
+
+  // ── Drawer ──
+  function openDrawer() {
+    document.getElementById('drawer').classList.add('open');
+    document.getElementById('drawer-overlay').classList.add('open');
+  }
+  function closeDrawer() {
+    document.getElementById('drawer').classList.remove('open');
+    document.getElementById('drawer-overlay').classList.remove('open');
+  }
+
+  // ── Sections (navegación principal desde el drawer) ──
+  var SECTIONS = ['pedidos', 'usuarios', 'clientes', 'reportes'];
+  var currentSection = null;
+
+  function switchSection(name, opts) {
+    opts = opts || {};
+    if (!opts.skipClose) closeDrawer();
+    currentSection = name;
+
+    // Marcar item activo en el drawer
+    SECTIONS.forEach(function(s) {
+      var el = document.getElementById('drawer-' + s);
+      if (el) el.classList.toggle('active', s === name);
+    });
+
+    var tabBar = document.getElementById('tab-bar');
+    if (name === 'pedidos') {
+      tabBar.style.display = '';
+      switchTab('nuevo');
+    } else if (name === 'usuarios') {
+      tabBar.style.display = 'none';
+      ['nuevo', 'guardados', 'clientes', 'reportes'].forEach(function(t) {
+        var pb = document.getElementById('panel-' + t);
+        if (pb) pb.classList.remove('active');
+      });
+      document.getElementById('panel-usuarios').classList.add('active');
+      loadUsers();
+    } else if (name === 'clientes') {
+      tabBar.style.display = 'none';
+      ['nuevo', 'guardados', 'usuarios', 'reportes'].forEach(function(t) {
+        var pb = document.getElementById('panel-' + t);
+        if (pb) pb.classList.remove('active');
+      });
+      document.getElementById('panel-clientes').classList.add('active');
+      loadClientes();
+    } else if (name === 'reportes') {
+      tabBar.style.display = 'none';
+      ['nuevo', 'guardados', 'usuarios', 'clientes'].forEach(function(t) {
+        var pb = document.getElementById('panel-' + t);
+        if (pb) pb.classList.remove('active');
+      });
+      document.getElementById('panel-reportes').classList.add('active');
+      loadReportes(false);
+    }
+    window.scrollTo(0, 0);
+    if (document.documentElement) document.documentElement.scrollTop = 0;
+    if (document.body) document.body.scrollTop = 0;
+  }
+
+  // ────────────────────────────────────────────
+
+  // TABS
+  // ────────────────────────────────────────────
+  // Sub-tabs DENTRO de la sección Pedidos (Nuevo / Guardados)
+  function switchTab(name) {
+    ['nuevo', 'guardados'].forEach(function(t) {
+      var tb = document.getElementById('tab-' + t);
+      var pb = document.getElementById('panel-' + t);
+      if (tb) tb.classList.toggle('active', t === name);
+      if (pb) pb.classList.toggle('active', t === name);
+    });
+    // Asegurar que los paneles de Usuarios / Clientes / Reportes no queden visibles
+    var pu = document.getElementById('panel-usuarios');
+    if (pu) pu.classList.remove('active');
+    var pc = document.getElementById('panel-clientes');
+    if (pc) pc.classList.remove('active');
+    var pr = document.getElementById('panel-reportes');
+    if (pr) pr.classList.remove('active');
+    // Resetear scroll al cambiar de pestaña
+    window.scrollTo(0, 0);
+    if (document.documentElement) document.documentElement.scrollTop = 0;
+    if (document.body) document.body.scrollTop = 0;
+    if (name === 'guardados') loadRecords();
+  }
+
+  // ────────────────────────────────────────────

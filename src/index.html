@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>LA COSTA S.R.L</title>
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
+  <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
+  <script>
+    if (typeof pdfjsLib !== 'undefined') {
+      pdfjsLib.GlobalWorkerOptions.workerSrc =
+        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    }
+  </script>
+  <style>
+    <?!= include('css-base'); ?>
+    <?!= include('css-auth'); ?>
+    <?!= include('css-layout'); ?>
+    <?!= include('css-pedido'); ?>
+    <?!= include('css-tabla'); ?>
+    <?!= include('css-modales'); ?>
+    <?!= include('css-reportes'); ?>
+  </style>
+  <script>
+    // Marca el body como mobile y aplica layout vertical para Nuevo Pedido.
+    // NOTA: ya NO usamos el hack de `zoom` CSS porque rompe el file picker en Android Brave.
+    // Con `addMetaTag('viewport', ...)` en el doGet del Code.gs ya alcanza para mobile.
+    (function() {
+      var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
+      if (!isMobile) return;
+      var css = '#order-grid{flex-direction:column!important}'
+              + '.order-photo-col,.order-form-col{flex:1 1 100%!important;width:100%!important;min-width:0!important}';
+      var s = document.createElement('style');
+      s.textContent = css;
+      document.head.appendChild(s);
+      document.addEventListener('DOMContentLoaded', function() {
+        document.body.classList.add('is-mobile');
+      });
+    })();
+  </script>
+</head>
+<body>
+
+
+<!-- Loading + pantallas de autenticacion -->
+<?!= include('ui-auth'); ?>
+
+<!-- App -->
+<div id="app-wrapper">
+<?!= include('ui-shell'); ?>
+
+  <!-- Panels -->
+  <main>
+<?!= include('ui-panel-nuevo'); ?>
+<?!= include('ui-panel-pedidos'); ?>
+<?!= include('ui-panel-usuarios'); ?>
+<?!= include('ui-panel-clientes'); ?>
+<?!= include('ui-panel-reportes'); ?>
+  </main>
+</div><!-- /app-wrapper -->
+
+<!-- Toast, confirm, visor de fotos y modales -->
+<?!= include('ui-modales'); ?>
+
+<script>
+<?!= include('js-state'); ?>
+<?!= include('js-app'); ?>
+<?!= include('js-auth'); ?>
+<?!= include('js-imagen'); ?>
+<?!= include('js-pedido-form'); ?>
+<?!= include('js-pedidos-tabla'); ?>
+<?!= include('js-pedido-ver'); ?>
+<?!= include('js-pedido-editar'); ?>
+<?!= include('js-reportes'); ?>
+<?!= include('js-reportes-export'); ?>
+<?!= include('js-usuarios'); ?>
+<?!= include('js-clientes-autocomplete'); ?>
+<?!= include('js-clientes'); ?>
+<?!= include('js-cliente-ver'); ?>
+<?!= include('js-confirm'); ?>
+<?!= include('js-feedback'); ?>
+</script>
+
+<!-- Área de impresión / exportación a PDF (oculta en pantalla, visible al imprimir) -->
+<div id="print-area"></div>
+</body>
+</html>
+

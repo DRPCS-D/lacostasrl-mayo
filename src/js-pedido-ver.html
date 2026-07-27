@@ -1,0 +1,153 @@
+  // VIEW ORDER (solo lectura, todos los usuarios)
+  // ────────────────────────────────────────────
+  var viewingId = null;
+
+  function openViewModal(id) {
+    var r = recordsCache[id];
+    if (!r) return;
+    viewingId = id;
+    document.getElementById('view-record-id').textContent = 'ID: ' + id;
+    // Foto del pedido (si existe en Drive)
+    var imgId = String(r['Imagen'] || '').trim();
+    var photoWrap  = document.getElementById('v-photo-wrap');
+    var photoEmpty = document.getElementById('v-photo-empty');
+    var photoImg   = document.getElementById('v-photo-thumb');
+    if (imgId) {
+      photoImg.src = 'https://drive.google.com/thumbnail?id=' + encodeURIComponent(imgId) + '&sz=w2000';
+      photoWrap.style.display = '';
+      photoEmpty.style.display = 'none';
+    } else {
+      photoImg.src = '';
+      photoWrap.style.display = 'none';
+      photoEmpty.style.display = '';
+    }
+    document.getElementById('v-cliente').textContent     = r['Cliente']     || '';
+    document.getElementById('v-usuario').textContent     = r['Usuario']     || '';
+    document.getElementById('v-nroOrden').textContent    = r['N° Orden']    || '';
+    document.getElementById('v-nroPedido').textContent   = r['N° Pedido']   || '';
+    document.getElementById('v-entrega').textContent     = r['Entrega']     || '';
+    document.getElementById('v-ciudad').textContent      = r['Ciudad']      || '';
+    document.getElementById('v-zona').textContent        = r['Zona']        || '';
+    document.getElementById('v-direccion').textContent   = r['Dirección']   || '';
+    document.getElementById('v-formaPago').textContent   = r['Forma Pago']  || '';
+    document.getElementById('v-tipo').textContent        = r['Tipo']        || '';
+    document.getElementById('v-marca').textContent       = r['Marca']       || '';
+    document.getElementById('v-totalPares').textContent  = r['Total Pares'] || '';
+    document.getElementById('v-totalPrecio').textContent = r['Total Precio']|| '';
+    document.getElementById('v-obs').textContent         = r['OBS']         || '';
+    // Badge con el código de cliente (si el pedido lo tiene guardado)
+    var codCli = String(r['Código Cliente'] || '').trim();
+    var badge = document.getElementById('v-cliente-codigo-badge');
+    if (codCli) {
+      badge.textContent = codCli;
+      badge.className = 'cliente-badge';
+      badge.style.display = 'inline-block';
+    } else {
+      badge.style.display = 'none';
+      badge.textContent = '';
+    }
+    // El botón "Editar" del modal Ver es admin-only
+    document.getElementById('btn-view-edit').style.display   = (authRol === 'Admin') ? '' : 'none';
+    document.getElementById('btn-view-delete').style.display = (authRol === 'Admin') ? '' : 'none';
+    updateViewNavState();
+    document.getElementById('modal-view-overlay').classList.remove('hidden');
+  }
+
+  function getViewNavList() {
+    try { return getFilteredSortedRecords() || []; } catch(e) { return []; }
+  }
+
+  function updateViewNavState() {
+    var list = getViewNavList();
+    var idx = -1;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] && list[i]['ID'] === viewingId) { idx = i; break; }
+    }
+    var prevBtn = document.getElementById('view-prev-btn');
+    var nextBtn = document.getElementById('view-next-btn');
+    var posEl   = document.getElementById('view-nav-pos');
+    if (idx === -1 || list.length === 0) {
+      if (prevBtn) prevBtn.disabled = true;
+      if (nextBtn) nextBtn.disabled = true;
+      if (posEl)   posEl.textContent = '';
+      return;
+    }
+    if (prevBtn) prevBtn.disabled = (idx === 0);
+    if (nextBtn) nextBtn.disabled = (idx === list.length - 1);
+    if (posEl)   posEl.textContent = (idx + 1) + ' / ' + list.length;
+  }
+
+  function navigateView(direction) {
+    if (!viewingId) return;
+    var list = getViewNavList();
+    var idx = -1;
+    for (var i = 0; i < list.length; i++) {
+      if (list[i] && list[i]['ID'] === viewingId) { idx = i; break; }
+    }
+    if (idx === -1) return;
+    var next = idx + direction;
+    if (next < 0 || next >= list.length) return;
+    var nextId = list[next]['ID'];
+    selectRow(nextId);
+    openViewModal(nextId);
+  }
+
+  function closeViewModal() {
+    document.getElementById('modal-view-overlay').classList.add('hidden');
+    viewingId = null;
+  }
+
+  function switchViewToEdit() {
+    if (!viewingId) return;
+    var id = viewingId;
+    closeViewModal();
+    editRecord(id);
+  }
+
+  function deleteCurrentOrder() {
+    if (!viewingId) return;
+    if (authRol !== 'Admin') return;
+    var id = viewingId;
+    var r = recordsCache[id] || {};
+    var info = [];
+    if (r['N° Orden']) info.push('N° Orden: ' + r['N° Orden']);
+    if (r['Cliente'])  info.push(r['Cliente']);
+    if (r['Fecha Carga']) info.push(r['Fecha Carga']);
+    showConfirm({
+      title: 'Eliminar pedido',
+      message: '¿Confirmás que querés eliminar este pedido? Esta acción no se puede deshacer.',
+      items: info,
+      requireWord: 'eliminar',
+      okText: 'Eliminar',
+      cancelText: 'Cancelar'
+    }).then(function(ok) {
+      if (!ok) return;
+      var btn = document.getElementById('btn-view-delete');
+      btn.disabled = true; btn.textContent = 'Eliminando...';
+      google.script.run
+        .withSuccessHandler(function() {
+          btn.disabled = false; btn.textContent = 'Borrar';
+          showToast('Pedido eliminado', 'success');
+          closeViewModal();
+          loadRecords();
+        })
+        .withFailureHandler(handleAuthError(function(err) {
+          btn.disabled = false; btn.textContent = 'Borrar';
+          showToast('Error: ' + (err ? err.message : 'desconocido'), 'error');
+        }))
+        .deleteOrder(authToken, id);
+    });
+  }
+
+  document.getElementById('modal-view-overlay').addEventListener('mousedown', function(e) {
+    if (e.target === this) closeViewModal();
+  });
+
+  document.addEventListener('keydown', function(e) {
+    var overlay = document.getElementById('modal-view-overlay');
+    if (!overlay || overlay.classList.contains('hidden')) return;
+    if (e.key === 'ArrowLeft')  { e.preventDefault(); navigateView(-1); }
+    if (e.key === 'ArrowRight') { e.preventDefault(); navigateView(1);  }
+  });
+
+  // ────────────────────────────────────────────

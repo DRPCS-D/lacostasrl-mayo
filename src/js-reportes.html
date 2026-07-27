@@ -1,0 +1,272 @@
+  // REPORTES (Admin / AdminL)
+  // ────────────────────────────────────────────
+  var REP_PALETTE = ['#8A1B1A', '#c79b9a', '#d4a574', '#7b9e7e', '#6a8caf', '#a47ba3'];
+
+  function loadReportes(forceRefresh) {
+    // Si tenemos allRecords ya cargado, usamos ese cache. Si no, lo traemos.
+    if (!forceRefresh && allRecords && allRecords.length) {
+      renderReportes();
+      return;
+    }
+    setTableLoading('panel-reportes', true);
+    google.script.run
+      .withSuccessHandler(function(rows) {
+        setTableLoading('panel-reportes', false);
+        allRecords = rows || [];
+        recordsCache = {};
+        allRecords.forEach(function(r) { if (r['ID']) recordsCache[r['ID']] = r; });
+        renderReportes();
+      })
+      .withFailureHandler(handleAuthError(function(err) {
+        setTableLoading('panel-reportes', false);
+        document.getElementById('rep-evolution').innerHTML =
+          '<div class="rep-empty">Error al cargar: ' + esc(err ? err.message : 'desconocido') + '</div>';
+      }))
+      .getOrders(authToken);
+  }
+
+  function ymd(d) {
+    var y = d.getFullYear();
+    var m = d.getMonth() + 1;
+    var dy = d.getDate();
+    return y + '-' + (m < 10 ? '0' + m : m) + '-' + (dy < 10 ? '0' + dy : dy);
+  }
+
+  // Devuelve { rows, fromDate, toDate, tipo } aplicando los filtros del panel.
+  // Si el rango es inválido, devuelve null.
+  function getReportFilteredData() {
+    var fromInput = document.getElementById('rep-from');
+    var toInput   = document.getElementById('rep-to');
+    var tipoSel   = document.getElementById('rep-tipo');
+    var today = new Date();
+    if (!fromInput.value) fromInput.value = today.getFullYear() + '-01-01';
+    if (!toInput.value)   toInput.value   = ymd(today);
+    var fromDate = new Date(fromInput.value + 'T00:00:00');
+    var toDate   = new Date(toInput.value   + 'T23:59:59');
+    if (isNaN(fromDate.getTime()) || isNaN(toDate.getTime()) || fromDate > toDate) return null;
+    var tipo = tipoSel.value;
+    var fromTs = fromDate.getTime();
+    var toTs   = toDate.getTime();
+    var rows = (allRecords || []).filter(function(r) {
+      var ts = parseDateDMY(r['Fecha Carga']);
+      if (!ts || ts < fromTs || ts > toTs) return false;
+      if (tipo && String(r['Tipo'] || '').trim().toUpperCase() !== tipo) return false;
+      return true;
+    });
+    return { rows: rows, fromDate: fromDate, toDate: toDate, tipo: tipo };
+  }
+
+  function renderReportes() {
+    var f = getReportFilteredData();
+    if (!f) {
+      document.getElementById('rep-evolution').innerHTML =
+        '<div class="rep-empty">Rango de fechas inválido</div>';
+      return;
+    }
+    var rows = f.rows, fromDate = f.fromDate, toDate = f.toDate;
+
+    // KPIs
+    var totalCount = rows.length;
+    var totalPares = 0, totalPrecio = 0;
+    rows.forEach(function(r) {
+      totalPares  += parseAmount(r['Total Pares']);
+      totalPrecio += parseAmount(r['Total Precio']);
+    });
+    var avg = totalCount ? Math.round(totalPrecio / totalCount) : 0;
+    document.getElementById('rep-kpi-count').textContent = totalCount;
+    document.getElementById('rep-kpi-pares').textContent = formatAmount(totalPares);
+    document.getElementById('rep-kpi-total').textContent = 'Gs. ' + formatAmount(totalPrecio);
+    document.getElementById('rep-kpi-avg').textContent   = 'Gs. ' + formatAmount(avg);
+
+    renderRepEvolution(rows, fromDate, toDate);
+    renderRepTopBars('rep-top-clientes',   rows, 'Cliente', 10);
+    renderRepTopBars('rep-top-marcas',     rows, 'Marca',   10, { uppercase: true });
+    renderRepTopBars('rep-top-vendedores', rows, 'Usuario', 10, { uppercase: true });
+    renderRepTopBars('rep-top-ciudades',   rows, 'Ciudad',  10, { uppercase: true });
+    renderRepTopBars('rep-top-zonas',      rows, 'Zona',    10, { uppercase: true });
+    renderRepDonut(rows, 'Usuario', '(sin vendedor)', 'vendedores');
+  }
+
+  function renderRepEvolution(rows, fromDate, toDate) {
+    var MONTH_LABELS = ['Ene','Feb','Mar','Abr','May','Jun','Jul','Ago','Sep','Oct','Nov','Dic'];
+
+    // Construir buckets mensuales entre fromDate y toDate (inclusive)
+    var buckets = [];
+    var y = fromDate.getFullYear(), m = fromDate.getMonth();
+    var endY = toDate.getFullYear(), endM = toDate.getMonth();
+    while (y < endY || (y === endY && m <= endM)) {
+      buckets.push({ year: y, month: m, count: 0, amount: 0 });
+      m++; if (m > 11) { m = 0; y++; }
+    }
+    if (!buckets.length) {
+      document.getElementById('rep-evolution').innerHTML = '<div class="rep-empty">Sin rango válido</div>';
+      return;
+    }
+
+    // Mostrar año en label sólo si el rango cubre más de un año calendario
+    var multiYear = (fromDate.getFullYear() !== toDate.getFullYear());
+
+    var keyOf = function(yr, mo) { return yr * 12 + mo; };
+    var idxBy = {};
+    buckets.forEach(function(b, i) { idxBy[keyOf(b.year, b.month)] = i; });
+
+    rows.forEach(function(r) {
+      var ts = parseDateDMY(r['Fecha Carga']);
+      if (!ts) return;
+      var d = new Date(ts);
+      var k = keyOf(d.getFullYear(), d.getMonth());
+      var i = idxBy[k];
+      if (i == null) return;
+      buckets[i].count += 1;
+      buckets[i].amount += parseAmount(r['Total Precio']);
+    });
+
+    var maxAmount = Math.max.apply(null, buckets.map(function(b) { return b.amount; })) || 1;
+    var maxCount  = Math.max.apply(null, buckets.map(function(b) { return b.count; }))  || 1;
+
+    // SVG geometry — viewBox crece si hay muchos meses para que las barras no se aplasten
+    var N = buckets.length;
+    var slotMin = 50;
+    var W = Math.max(700, 100 + slotMin * N);
+    var H = 240;
+    var padL = 50, padR = 50, padT = 14, padB = 40;
+    var innerW = W - padL - padR;
+    var innerH = H - padT - padB;
+    var slotW = innerW / N;
+    var barW = Math.min(28, slotW * 0.55);
+
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">';
+    // Grilla
+    for (var g = 0; g <= 3; g++) {
+      var ly = padT + (innerH / 3) * g;
+      svg += '<line class="rep-axis-line" x1="' + padL + '" y1="' + ly + '" x2="' + (W - padR) + '" y2="' + ly + '"/>';
+      var valAmount = maxAmount * (1 - g / 3);
+      svg += '<text class="rep-axis-label" x="' + (padL - 6) + '" y="' + (ly + 3) + '" text-anchor="end">' +
+             formatRepMoney(valAmount) + '</text>';
+      var valCount = Math.round(maxCount * (1 - g / 3));
+      svg += '<text class="rep-axis-label" x="' + (W - padR + 6) + '" y="' + (ly + 3) + '" text-anchor="start">' +
+             valCount + '</text>';
+    }
+    // Barras + línea de cantidad
+    var pointsLine = [];
+    for (var i = 0; i < N; i++) {
+      var cx = padL + slotW * i + slotW / 2;
+      var hAmount = (buckets[i].amount / maxAmount) * innerH;
+      var yAmount = padT + innerH - hAmount;
+      var label = MONTH_LABELS[buckets[i].month] + (multiYear ? "'" + String(buckets[i].year).slice(2) : '');
+      svg += '<rect class="rep-bar-amount" x="' + (cx - barW / 2) + '" y="' + yAmount +
+             '" width="' + barW + '" height="' + hAmount + '" rx="2">' +
+             '<title>' + label + ' ' + buckets[i].year + '&#10;Monto: Gs ' + formatAmount(buckets[i].amount) +
+             '&#10;Pedidos: ' + buckets[i].count + '</title></rect>';
+      var yCount = padT + innerH - (buckets[i].count / maxCount) * innerH;
+      pointsLine.push(cx + ',' + yCount);
+      svg += '<text class="rep-axis-label" x="' + cx + '" y="' + (H - padB + 16) +
+             '" text-anchor="middle">' + label + '</text>';
+    }
+    svg += '<polyline points="' + pointsLine.join(' ') + '" fill="none" stroke="#c79b9a" stroke-width="2" stroke-linejoin="round"/>';
+    for (var j = 0; j < N; j++) {
+      var parts = pointsLine[j].split(',');
+      svg += '<circle cx="' + parts[0] + '" cy="' + parts[1] + '" r="3" fill="#c79b9a"/>';
+    }
+    svg += '</svg>';
+    document.getElementById('rep-evolution').innerHTML = svg;
+  }
+
+  function renderRepTopBars(containerId, rows, key, topN, opts) {
+    opts = opts || {};
+    var groups = {};
+    rows.forEach(function(r) {
+      var name = String(r[key] || '').trim();
+      if (!name) return;
+      if (opts.uppercase) name = name.toUpperCase();
+      if (!groups[name]) groups[name] = { count: 0, amount: 0, pares: 0 };
+      groups[name].count  += 1;
+      groups[name].amount += parseAmount(r['Total Precio']);
+      groups[name].pares  += parseAmount(r['Total Pares']);
+    });
+    var arr = Object.keys(groups).map(function(name) {
+      return { name: name, count: groups[name].count, amount: groups[name].amount, pares: groups[name].pares };
+    }).sort(function(a, b) { return b.amount - a.amount; }).slice(0, topN);
+
+    if (!arr.length) {
+      document.getElementById(containerId).innerHTML = '<div class="rep-empty">Sin datos</div>';
+      return;
+    }
+    var maxAmount = arr[0].amount || 1;
+    document.getElementById(containerId).innerHTML = arr.map(function(g) {
+      var pct = (g.amount / maxAmount) * 100;
+      var displayName = g.name.length > 40 ? g.name.slice(0, 40) + '…' : g.name;
+      return '<div class="rep-bar-row">' +
+        '<div class="rep-bar-row-head">' +
+          '<span class="rep-bar-name" title="' + esc(g.name) + '">' + esc(displayName) + '</span>' +
+          '<span class="rep-bar-val">Gs ' + formatAmount(g.amount) + ' · ' + formatAmount(g.pares) + ' pares</span>' +
+        '</div>' +
+        '<div class="rep-bar-track"><div class="rep-bar-fill" style="width:' + pct.toFixed(1) + '%"></div></div>' +
+      '</div>';
+    }).join('');
+  }
+
+  function renderRepDonut(rows, key, emptyLabel, unitLabel) {
+    var groups = {};
+    rows.forEach(function(r) {
+      var name = (String(r[key] || '').trim() || emptyLabel).toUpperCase();
+      if (!groups[name]) groups[name] = { count: 0, amount: 0 };
+      groups[name].count  += 1;
+      groups[name].amount += parseAmount(r['Total Precio']);
+    });
+    var arr = Object.keys(groups).map(function(name) {
+      return { name: name, count: groups[name].count, amount: groups[name].amount };
+    }).sort(function(a, b) { return b.amount - a.amount; });
+
+    var total = arr.reduce(function(a, b) { return a + b.amount; }, 0);
+    if (!total) {
+      document.getElementById('rep-tipos').innerHTML = '<div class="rep-empty">Sin datos</div>';
+      return;
+    }
+
+    // Donut SVG
+    var size = 160, stroke = 24, r = (size - stroke) / 2, cx = size / 2, cy = size / 2;
+    var circ = 2 * Math.PI * r;
+    var offset = 0;
+    var segments = arr.map(function(s, i) {
+      var pct = s.amount / total;
+      var len = pct * circ;
+      var pctTxt = (pct * 100).toFixed(1) + '%';
+      var seg = '<circle class="rep-donut-seg" cx="' + cx + '" cy="' + cy + '" r="' + r +
+                '" fill="none" stroke="' + REP_PALETTE[i % REP_PALETTE.length] +
+                '" stroke-width="' + stroke +
+                '" stroke-dasharray="' + len + ' ' + (circ - len) +
+                '" stroke-dashoffset="' + (-offset) + '" transform="rotate(-90 ' + cx + ' ' + cy + ')">' +
+                '<title>' + esc(s.name) + '&#10;Gs ' + formatAmount(s.amount) +
+                '&#10;' + s.count + ' pedidos · ' + pctTxt + '</title></circle>';
+      offset += len;
+      return seg;
+    }).join('');
+    var svg = '<svg class="rep-donut" viewBox="0 0 ' + size + ' ' + size + '" xmlns="http://www.w3.org/2000/svg">' +
+              segments +
+              '<text x="' + cx + '" y="' + (cy - 2) + '" text-anchor="middle" font-size="13" fill="#525252" font-weight="600">' +
+              arr.length + ' ' + unitLabel + '</text>' +
+              '<text x="' + cx + '" y="' + (cy + 14) + '" text-anchor="middle" font-size="10" fill="#737373">' +
+              rows.length + ' pedidos</text>' +
+              '</svg>';
+
+    var legend = '<div class="rep-donut-legend">' + arr.map(function(s, i) {
+      var pct = ((s.amount / total) * 100).toFixed(1);
+      return '<div class="rep-donut-leg">' +
+        '<span class="rep-donut-leg-dot" style="background:' + REP_PALETTE[i % REP_PALETTE.length] + '"></span>' +
+        '<span class="rep-donut-leg-name">' + esc(s.name) + '</span>' +
+        '<span class="rep-donut-leg-val">' + pct + '% · ' + s.count + '</span>' +
+      '</div>';
+    }).join('') + '</div>';
+
+    document.getElementById('rep-tipos').innerHTML = svg + legend;
+  }
+
+  function formatRepMoney(n) {
+    if (n >= 1e9) return (n / 1e9).toFixed(1).replace(/\.0$/, '') + 'B';
+    if (n >= 1e6) return (n / 1e6).toFixed(1).replace(/\.0$/, '') + 'M';
+    if (n >= 1e3) return (n / 1e3).toFixed(0) + 'K';
+    return String(Math.round(n));
+  }
+
+  // ────────────────────────────────────────────

@@ -1,0 +1,39 @@
+  // ── Auth state ──
+  var authToken    = null;
+  var authUsername = null;
+  var authRol      = null;
+
+  // ── Order state ──
+  var currentBase64 = null;
+  var currentMime   = null;
+  var currentFileId = null;
+  // Cola de páginas cuando se sube un PDF multipágina
+  // Cada item: { dataUrl: 'data:image/png;base64,...', mime: 'image/png' }
+  var pdfQueue = [];
+  var pdfIndex = 0;
+  var recordsCache  = {};
+  var allRecords    = [];
+  var selectedRowId = null;
+
+  // ── Users state ──
+  var usersCache   = {};
+  var editingUserId = null;
+
+  // ── Clientes state ──
+  var allClients = [];                  // [{codigo, razonSocial, nombreFantasia}]
+  var clientesCache = {};               // por código (lowercase), para edición
+  var editingClienteCodigo = null;      // código original del cliente en edición
+  var selectedClienteCodigo = '';       // código del cliente seleccionado en Nuevo Pedido
+  var selectedEditClienteCodigo = '';   // código del cliente seleccionado en Editar Pedido
+  var acActiveIdx = -1;                 // índice del item activo en el autocomplete (teclado)
+  var acFiltered = [];                  // resultados actuales del autocomplete
+
+  // ── Order edit state ──
+  var editingId = null;
+  // Cambio de foto en el modal de edición:
+  // null = mantener la foto actual, string = base64 de la nueva foto pendiente de subir
+  var editingNewImageBase64 = null;
+  var editingNewImageMime   = null;
+  var editingCurrentImgId   = null;
+
+  // ────────────────────────────────────────────

@@ -1,0 +1,690 @@
+  // RECORDS
+  // ────────────────────────────────────────────
+  function loadRecords() {
+    setTableLoading('panel-guardados', true);
+    google.script.run
+      .withSuccessHandler(function(rows) {
+        setTableLoading('panel-guardados', false);
+        renderRecords(rows || []);
+      })
+      .withFailureHandler(handleAuthError(function(err) {
+        setTableLoading('panel-guardados', false);
+        document.getElementById('records-body').innerHTML =
+          '<tr><td colspan="7" class="empty-table">Error al cargar: ' + (err ? err.message : 'desconocido') + '</td></tr>';
+      }))
+      .getOrders(authToken);
+  }
+
+  // ── Pagination state ──
+  var PAGE_SIZE = 10;
+  var currentPage = 1;
+
+  function changePage(delta) {
+    currentPage += delta;
+    if (currentPage < 1) currentPage = 1;
+    applyFilters();
+  }
+
+  // ── Sort state ──
+  var sortState = { column: null, direction: 'asc' };
+  var NUMERIC_COLS = { 'Total Pares': 1, 'Total Precio': 1 };
+  var DATE_COLS    = { 'Fecha Carga': 1 };
+
+  function sortBy(key) {
+    if (sortState.column === key) {
+      sortState.direction = sortState.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+      sortState.column = key;
+      sortState.direction = 'asc';
+    }
+    currentPage = 1; // resetear paginación al cambiar orden
+    applyFilters();
+  }
+
+  function parseDateDMY(s) {
+    // dd/MM/yyyy HH:mm  ó  dd/MM/yyyy  ó  dd/MM/yy
+    var m = String(s).match(/^(\d{1,2})\/(\d{1,2})\/(\d{2,4})(?:\s+(\d{1,2}):(\d{2}))?/);
+    if (!m) return 0;
+    var yr = parseInt(m[3], 10); if (yr < 100) yr += 2000;
+    return new Date(yr, parseInt(m[2],10)-1, parseInt(m[1],10), parseInt(m[4]||0,10), parseInt(m[5]||0,10)).getTime();
+  }
+
+  function compareRows(a, b, key) {
+    var va = a[key], vb = b[key];
+    if (NUMERIC_COLS[key]) {
+      var na = parseFloat(String(va || '').replace(/[.,\s]/g, '')) || 0;
+      var nb = parseFloat(String(vb || '').replace(/[.,\s]/g, '')) || 0;
+      return na - nb;
+    }
+    if (DATE_COLS[key]) return parseDateDMY(va) - parseDateDMY(vb);
+    return String(va || '').toLowerCase().localeCompare(String(vb || '').toLowerCase(), 'es');
+  }
+
+  function updateSortIndicators() {
+    var inds = document.querySelectorAll('.sort-ind');
+    inds.forEach(function(el) {
+      if (el.getAttribute('data-key') === sortState.column) {
+        el.classList.add('active');
+        el.textContent = sortState.direction === 'asc' ? '▲' : '▼';
+      } else {
+        el.classList.remove('active');
+        el.textContent = '⇅';
+      }
+    });
+  }
+
+  function renderRecords(rows) {
+    allRecords = rows;
+    recordsCache = {};
+    rows.forEach(function(r) { if (r['ID']) recordsCache[r['ID']] = r; });
+    currentPage = 1; // resetear paginación al recargar
+
+    // Restaurar filtros + sort + página (antes de poblar opciones para que el active class quede correcto)
+    var restored = restoreFilterState();
+
+    // Poblar filtros (Usuario, Marca, Cliente) — toma valores únicos del dataset
+    populateSelectFilter('filter-usuario', rows, 'Usuario', 'Todos los usuarios');
+    populateSelectFilter('filter-marca',   rows, 'Marca',   'Todas las marcas');
+    populateSelectFilter('filter-cliente', rows, 'Cliente', 'Todos los clientes');
+    populateSelectFilter('filter-tipo',    rows, 'Tipo',    'Todos los tipos');
+    populateSelectFilter('filter-zona',    rows, 'Zona',    'Todas las zonas');
+    updateFiltersCount();
+    if (restored) updateSortIndicators();
+
+    applyFilters();
+    var dupCount = updateDuplicatesKpi();
+    if (dupCount > 0) {
+      var msg = dupCount === 1
+        ? '⚠ Atención: el N° Orden ' + getRelevantDuplicates()[0] + ' está duplicado.'
+        : '⚠ Atención: hay ' + dupCount + ' N° Orden duplicados.';
+      showToast(msg, 'warning');
+    }
+  }
+
+  // Devuelve los N° Orden duplicados que el usuario actual TIENE PERMISO de ver.
+  // - Admin: todos los duplicados globales.
+  // - Usuario normal: solo aquellos donde al menos uno de los registros le pertenece.
+  function getRelevantDuplicates() {
+    var counts = {};
+    allRecords.forEach(function(r) {
+      var k = String(r['N° Orden'] || '').trim();
+      if (!k) return;
+      counts[k] = (counts[k] || 0) + 1;
+    });
+    var dupOrders = Object.keys(counts).filter(function(k) { return counts[k] > 1; });
+    if (!dupOrders.length) return [];
+    if (authRol === 'Admin' || authRol === 'AdminL') return dupOrders;
+    return dupOrders.filter(function(orden) {
+      return allRecords.some(function(r) {
+        return String(r['N° Orden'] || '').trim() === orden && r['Usuario'] === authUsername;
+      });
+    });
+  }
+
+  // Actualiza la KPI card "N° Orden duplicados". La oculta si no hay ninguno.
+  // Retorna la cantidad (para que el caller pueda decidir si mostrar también un toast).
+  function updateDuplicatesKpi() {
+    var dups = getRelevantDuplicates();
+    var card = document.getElementById('kpi-dup-card');
+    var val  = document.getElementById('kpi-dup');
+    if (!card || !val) return dups.length;
+    if (dups.length === 0) {
+      card.style.display = 'none';
+    } else {
+      card.style.display = '';
+      val.textContent = dups.length;
+    }
+    return dups.length;
+  }
+
+  // Estado de selección multi por filtro (arrays de valores)
+  var filterSelections = { 'filter-cliente': [], 'filter-marca': [], 'filter-usuario': [], 'filter-tipo': [], 'filter-zona': [],
+    'filter-cliente-ciudad': [], 'filter-cliente-zona': [] };
+
+  function populateSelectFilter(selectId, rows, key, allLabel) {
+    var values = [];
+    rows.forEach(function(r) {
+      var v = r[key];
+      if (v && values.indexOf(v) === -1) values.push(v);
+    });
+    values.sort(function(a, b) {
+      return String(a).localeCompare(String(b), 'es', { sensitivity: 'base' });
+    });
+    var hidden = document.getElementById(selectId);
+    if (!hidden) return;
+    var sdrop = hidden.closest('.sdrop');
+    // Limpiar selecciones cuyo valor ya no exista en el dataset
+    var selected = (filterSelections[selectId] || []).filter(function(v) {
+      return values.indexOf(v) !== -1;
+    });
+    filterSelections[selectId] = selected;
+    var optsEl = sdrop.querySelector('.sdrop-options');
+    // Item especial "Limpiar selección" arriba del listado
+    var html = '<button type="button" class="sdrop-clear" data-value="__clear__" onclick="clearSdropSelection(this)">Limpiar selección</button>';
+    html += values.map(function(v) {
+      var isOn = selected.indexOf(v) !== -1;
+      return '<button type="button" class="sdrop-option' + (isOn ? ' active' : '') +
+             '" data-value="' + esc(v) + '" onclick="toggleSdropOption(this)">' +
+             '<span class="sdrop-check">' + (isOn ? '✓' : '') + '</span>' +
+             '<span class="sdrop-text">' + esc(v) + '</span>' +
+             '</button>';
+    }).join('');
+    optsEl.innerHTML = html;
+    sdrop.dataset.allLabel = allLabel;
+    updateSdropLabel(sdrop);
+  }
+
+  // Actualiza el texto del botón principal del sdrop según cuántos están seleccionados
+  function updateSdropLabel(sdrop) {
+    var hidden = sdrop.querySelector('input[type="hidden"]');
+    var selected = filterSelections[hidden.id] || [];
+    var lbl = sdrop.querySelector('.sdrop-label');
+    var allLabel = sdrop.dataset.allLabel || '—';
+    if (selected.length === 0) {
+      lbl.textContent = allLabel;
+    } else if (selected.length === 1) {
+      lbl.textContent = selected[0];
+    } else {
+      lbl.textContent = selected.length + ' seleccionados';
+    }
+    sdrop.classList.toggle('has-value', selected.length > 0);
+  }
+
+  // ── Searchable dropdown handlers ──
+  function toggleFiltersPanel(e) {
+    if (e && e.stopPropagation) e.stopPropagation();
+    var panel = document.getElementById('filters-panel');
+    var btn = document.getElementById('btn-filters');
+    var willShow = panel.hasAttribute('hidden');
+    if (willShow) { panel.removeAttribute('hidden'); btn.classList.add('active'); }
+    else          { panel.setAttribute('hidden', ''); btn.classList.remove('active'); closeAllSdrops(); }
+  }
+  function closeFiltersPanel() {
+    var panel = document.getElementById('filters-panel');
+    var btn = document.getElementById('btn-filters');
+    if (panel && !panel.hasAttribute('hidden')) {
+      panel.setAttribute('hidden', '');
+      btn.classList.remove('active');
+      closeAllSdrops();
+    }
+  }
+  // ── Filtros de Clientes (Ciudad / Zona) ──
+  function toggleClienteFiltersPanel(e) {
+    if (e && e.stopPropagation) e.stopPropagation();
+    var panel = document.getElementById('filters-panel-clientes');
+    var btn = document.getElementById('btn-filters-clientes');
+    var willShow = panel.hasAttribute('hidden');
+    if (willShow) { panel.removeAttribute('hidden'); btn.classList.add('active'); }
+    else          { panel.setAttribute('hidden', ''); btn.classList.remove('active'); closeAllSdrops(); }
+  }
+  function clearClienteFilters() {
+    ['filter-cliente-ciudad', 'filter-cliente-zona'].forEach(function(id) {
+      filterSelections[id] = [];
+      var hidden = document.getElementById(id);
+      if (!hidden) return;
+      var sdrop = hidden.closest('.sdrop');
+      sdrop.querySelectorAll('.sdrop-option').forEach(function(o) {
+        o.classList.remove('active');
+        var ck = o.querySelector('.sdrop-check'); if (ck) ck.textContent = '';
+      });
+      updateSdropLabel(sdrop);
+    });
+    document.getElementById('search-clientes').value = '';
+    updateClienteFiltersCount();
+    renderClientes();
+  }
+  function updateClienteFiltersCount() {
+    var n = 0;
+    ['filter-cliente-ciudad', 'filter-cliente-zona'].forEach(function(id) {
+      if ((filterSelections[id] || []).length > 0) n++;
+    });
+    var badge = document.getElementById('filters-count-clientes');
+    if (!badge) return;
+    if (n > 0) { badge.style.display = ''; badge.textContent = n; }
+    else        { badge.style.display = 'none'; }
+  }
+  // Cerrar popover al click fuera del wrapper (soporta varios .filters-wrap en la página)
+  document.addEventListener('click', function(e) {
+    document.querySelectorAll('.filters-wrap').forEach(function(wrap) {
+      if (wrap.contains(e.target)) return;
+      var panel = wrap.querySelector('.filters-panel');
+      var btn = wrap.querySelector('.btn-filters');
+      if (panel && !panel.hasAttribute('hidden')) {
+        panel.setAttribute('hidden', '');
+        if (btn) btn.classList.remove('active');
+        closeAllSdrops();
+      }
+    });
+  });
+  function toggleSdrop(btn) {
+    var sdrop = btn.closest('.sdrop');
+    var panel = sdrop.querySelector('.sdrop-panel');
+    var isOpen = sdrop.classList.contains('open');
+    closeAllSdrops();
+    if (!isOpen) {
+      sdrop.classList.add('open');
+      panel.removeAttribute('hidden');
+      var search = panel.querySelector('.sdrop-search');
+      search.value = '';
+      filterSdropOptions(search);
+      setTimeout(function() { search.focus(); }, 0);
+    }
+  }
+  function closeAllSdrops() {
+    document.querySelectorAll('.sdrop.open').forEach(function(sd) {
+      sd.classList.remove('open');
+      var p = sd.querySelector('.sdrop-panel');
+      if (p) p.setAttribute('hidden', '');
+    });
+  }
+  function filterSdropOptions(input) {
+    var q = input.value.toLowerCase().trim();
+    var opts = input.parentElement.querySelectorAll('.sdrop-option');
+    var visible = 0;
+    opts.forEach(function(o) {
+      var match = !q || o.textContent.toLowerCase().indexOf(q) !== -1;
+      o.style.display = match ? '' : 'none';
+      if (match) visible++;
+    });
+    // Mensaje vacío
+    var optsEl = input.parentElement.querySelector('.sdrop-options');
+    var empty = optsEl.querySelector('.sdrop-empty');
+    if (visible === 0) {
+      if (!empty) {
+        empty = document.createElement('div');
+        empty.className = 'sdrop-empty';
+        empty.textContent = 'Sin coincidencias';
+        optsEl.appendChild(empty);
+      }
+    } else if (empty) {
+      empty.remove();
+    }
+  }
+  // Toggle on/off de una opción en multi-select
+  function toggleSdropOption(btn) {
+    var sdrop = btn.closest('.sdrop');
+    var hidden = sdrop.querySelector('input[type="hidden"]');
+    var value = btn.dataset.value || '';
+    var selected = filterSelections[hidden.id] || [];
+    var idx = selected.indexOf(value);
+    if (idx === -1) {
+      selected.push(value);
+      btn.classList.add('active');
+      btn.querySelector('.sdrop-check').textContent = '✓';
+    } else {
+      selected.splice(idx, 1);
+      btn.classList.remove('active');
+      btn.querySelector('.sdrop-check').textContent = '';
+    }
+    filterSelections[hidden.id] = selected;
+    updateSdropLabel(sdrop);
+    onSdropFilterChanged(sdrop);
+    // NO cerramos el dropdown — el usuario puede seguir eligiendo más
+  }
+  // Limpia todas las selecciones de este sdrop
+  function clearSdropSelection(btn) {
+    var sdrop = btn.closest('.sdrop');
+    var hidden = sdrop.querySelector('input[type="hidden"]');
+    filterSelections[hidden.id] = [];
+    sdrop.querySelectorAll('.sdrop-option').forEach(function(o) {
+      o.classList.remove('active');
+      var ck = o.querySelector('.sdrop-check'); if (ck) ck.textContent = '';
+    });
+    updateSdropLabel(sdrop);
+    onSdropFilterChanged(sdrop);
+  }
+  // Dispara el recálculo correcto (Pedidos o Clientes) según a qué panel pertenece el sdrop
+  function onSdropFilterChanged(sdrop) {
+    if (sdrop.closest('#filters-panel-clientes')) {
+      updateClienteFiltersCount();
+      renderClientes();
+    } else {
+      updateFiltersCount();
+      onFilterChange();
+    }
+  }
+  function clearAllFilters() {
+    ['filter-cliente','filter-marca','filter-usuario','filter-tipo','filter-zona'].forEach(function(id) {
+      filterSelections[id] = [];
+      var hidden = document.getElementById(id);
+      if (!hidden) return;
+      var sdrop = hidden.closest('.sdrop');
+      sdrop.querySelectorAll('.sdrop-option').forEach(function(o) {
+        o.classList.remove('active');
+        var ck = o.querySelector('.sdrop-check'); if (ck) ck.textContent = '';
+      });
+      updateSdropLabel(sdrop);
+    });
+    document.getElementById('search-input').value = '';
+    var fd = document.getElementById('filter-fecha-desde'); if (fd) fd.value = '';
+    var fh = document.getElementById('filter-fecha-hasta'); if (fh) fh.value = '';
+    sortState = { column: null, direction: 'asc' };
+    try { sessionStorage.removeItem(FILTER_STATE_KEY); } catch(e) {}
+    updateFiltersCount();
+    onFilterChange();
+  }
+  function updateFiltersCount() {
+    var n = 0;
+    ['filter-cliente','filter-marca','filter-usuario','filter-tipo','filter-zona'].forEach(function(id) {
+      if ((filterSelections[id] || []).length > 0) n++;
+    });
+    // Rango de fechas cuenta como 1 si hay al menos un extremo seteado
+    var fd = document.getElementById('filter-fecha-desde');
+    var fh = document.getElementById('filter-fecha-hasta');
+    if ((fd && fd.value) || (fh && fh.value)) n++;
+    var badge = document.getElementById('filters-count');
+    if (n > 0) { badge.style.display = ''; badge.textContent = n; }
+    else        { badge.style.display = 'none'; }
+  }
+  // Cerrar dropdowns al click afuera
+  document.addEventListener('click', function(e) {
+    if (!e.target.closest('.sdrop')) closeAllSdrops();
+  });
+
+  // Convierte "9.661.600" o "9,661,600" o "9661600" a número
+  function parseAmount(s) {
+    if (s === null || s === undefined) return 0;
+    var str = String(s).trim();
+    if (!str) return 0;
+    // Remueve todo lo que no sea dígito ni coma decimal; los separadores de miles (puntos/comas) se eliminan
+    // Asumimos formato latino: punto/coma como separador de miles, sin decimales en Total Precio
+    var n = parseFloat(str.replace(/[^\d-]/g, ''));
+    return isFinite(n) ? n : 0;
+  }
+  function formatAmount(n) {
+    // Formato latino con puntos como separador de miles
+    return Math.round(n).toLocaleString('es-PY').replace(/,/g, '.');
+  }
+  function formatAmountInput(input) {
+    var raw = input.value.replace(/[^\d]/g, '');
+    if (!raw) { input.value = ''; return; }
+    input.value = parseInt(raw, 10).toLocaleString('es-PY').replace(/,/g, '.');
+  }
+  // Valida que un string represente un monto numérico válido:
+  // permite dígitos, puntos y comas como separadores de miles. Rechaza letras/símbolos.
+  function isValidAmount(s) {
+    var str = String(s == null ? '' : s).trim();
+    if (!str) return false;
+    if (!/^[\d.,\s]+$/.test(str)) return false;       // solo dígitos y separadores
+    var digits = str.replace(/[^\d]/g, '');
+    return digits.length > 0 && parseInt(digits, 10) > 0;
+  }
+
+  // Normaliza el campo Marca: mayúsculas + sin acentos / diacríticos. La Ñ se preserva.
+  function normalizeMarca(s) {
+    return stripAccents(s).toUpperCase();
+  }
+
+  // Quita acentos/diacríticos (á→a, ñ→n, etc.) — usado en los campos de carga de pedidos
+  // para evitar inconsistencias de tildes entre distintos usuarios cargando el mismo dato.
+  function stripAccents(s) {
+    return String(s == null ? '' : s).normalize('NFD').replace(/[̀-ͯ]/g, '');
+  }
+
+  function onFilterChange() {
+    currentPage = 1;
+    applyFilters();
+  }
+
+  // ── Esc global: cierra el modal/viewer abierto más alto ──
+  // El photo viewer tiene prioridad; si no, cierra el último modal-overlay visible.
+  document.addEventListener('keydown', function(e) {
+    if (e.key !== 'Escape') return;
+    var pv = document.getElementById('photo-viewer-overlay');
+    if (pv && pv.classList.contains('open')) { closePhotoViewer(); return; }
+    var open = Array.prototype.slice.call(document.querySelectorAll('.modal-overlay:not(.hidden)'));
+    if (open.length) {
+      var top = open[open.length - 1];
+      var cancelBtn = top.querySelector('.btn-modal-cancel');
+      if (cancelBtn) cancelBtn.click();
+    }
+  });
+
+  // Foco al primer campo editable de un modal recién abierto.
+  function focusFirstField(modalEl) {
+    if (!modalEl) return;
+    setTimeout(function() {
+      var first = modalEl.querySelector('input:not([type=hidden]):not([disabled]):not([readonly]), textarea, select');
+      if (first) first.focus();
+    }, 60);
+  }
+
+  // Persistencia de filtros + sort + página en sessionStorage (sobrevive reload, no entre pestañas)
+  var FILTER_STATE_KEY = 'pedidos.filterState.v1';
+  function saveFilterState() {
+    try {
+      var fd = document.getElementById('filter-fecha-desde');
+      var fh = document.getElementById('filter-fecha-hasta');
+      var si = document.getElementById('search-input');
+      sessionStorage.setItem(FILTER_STATE_KEY, JSON.stringify({
+        filterSelections: filterSelections,
+        search:    si ? si.value : '',
+        dateFrom:  fd ? fd.value : '',
+        dateTo:    fh ? fh.value : '',
+        sortState: sortState,
+        currentPage: currentPage
+      }));
+    } catch(e) {}
+  }
+  function restoreFilterState() {
+    try {
+      var raw = sessionStorage.getItem(FILTER_STATE_KEY);
+      if (!raw) return false;
+      var s = JSON.parse(raw);
+      if (s.filterSelections) {
+        filterSelections = s.filterSelections;
+        // Re-pintar los checks de los sdrops según selecciones restauradas
+        Object.keys(filterSelections).forEach(function(id) {
+          var hidden = document.getElementById(id);
+          if (!hidden) return;
+          var sdrop = hidden.closest('.sdrop');
+          if (!sdrop) return;
+          var selected = filterSelections[id] || [];
+          sdrop.querySelectorAll('.sdrop-option').forEach(function(o) {
+            var v = o.dataset.value || '';
+            var isOn = selected.indexOf(v) !== -1;
+            o.classList.toggle('active', isOn);
+            var ck = o.querySelector('.sdrop-check'); if (ck) ck.textContent = isOn ? '✓' : '';
+          });
+          updateSdropLabel(sdrop);
+        });
+      }
+      var si = document.getElementById('search-input');
+      if (si && typeof s.search === 'string') si.value = s.search;
+      var fd = document.getElementById('filter-fecha-desde'); if (fd && s.dateFrom) fd.value = s.dateFrom;
+      var fh = document.getElementById('filter-fecha-hasta'); if (fh && s.dateTo)   fh.value = s.dateTo;
+      if (s.sortState && s.sortState.column) sortState = s.sortState;
+      if (typeof s.currentPage === 'number' && s.currentPage > 0) currentPage = s.currentPage;
+      updateFiltersCount();
+      return true;
+    } catch(e) { return false; }
+  }
+
+  // Spinner overlay sobre el panel de una tabla mientras se hace fetch
+  function setTableLoading(panelId, isLoading) {
+    var panel = document.getElementById(panelId);
+    if (!panel) return;
+    var existing = panel.querySelector('.table-loading-overlay');
+    if (isLoading) {
+      if (existing) return;
+      var ov = document.createElement('div');
+      ov.className = 'table-loading-overlay';
+      ov.innerHTML = '<div class="spinner"></div><span>Cargando…</span>';
+      panel.appendChild(ov);
+    } else if (existing) {
+      existing.remove();
+    }
+  }
+
+  // Debounce genérico (compartido para input de texto del buscador y filtros)
+  function debounce(fn, ms) {
+    var t;
+    return function() {
+      var args = arguments, ctx = this;
+      clearTimeout(t);
+      t = setTimeout(function(){ fn.apply(ctx, args); }, ms);
+    };
+  }
+  var debouncedFilterChange = debounce(onFilterChange, 300);
+
+  function getFilteredSortedRecords() {
+    var q = (document.getElementById('search-input').value || '').toLowerCase().trim();
+    var usuarios = filterSelections['filter-usuario'] || [];
+    var marcas   = filterSelections['filter-marca']   || [];
+    var clientes = filterSelections['filter-cliente'] || [];
+    var tipos    = filterSelections['filter-tipo']    || [];
+    var zonas    = filterSelections['filter-zona']    || [];
+    var fDesde   = document.getElementById('filter-fecha-desde').value; // "yyyy-MM-dd" o ""
+    var fHasta   = document.getElementById('filter-fecha-hasta').value;
+    // Convertir desde/hasta a número (timestamp del día completo)
+    var tsDesde = fDesde ? new Date(fDesde + 'T00:00:00').getTime() : null;
+    var tsHasta = fHasta ? new Date(fHasta + 'T23:59:59').getTime() : null;
+    var filtered = allRecords.filter(function(r) {
+      if (usuarios.length && usuarios.indexOf(r['Usuario']) === -1) return false;
+      if (marcas.length   && marcas.indexOf(r['Marca'])     === -1) return false;
+      if (clientes.length && clientes.indexOf(r['Cliente']) === -1) return false;
+      if (tipos.length    && tipos.indexOf(r['Tipo'])       === -1) return false;
+      if (zonas.length    && zonas.indexOf(r['Zona'])       === -1) return false;
+      if (tsDesde !== null || tsHasta !== null) {
+        var rTs = parseDateDMY(r['Fecha Carga']);
+        if (!rTs) return false;
+        if (tsDesde !== null && rTs < tsDesde) return false;
+        if (tsHasta !== null && rTs > tsHasta) return false;
+      }
+      if (!q) return true;
+      return ['Cliente','N° Orden','N° Pedido','Marca','Ciudad','RUC','Usuario','Código Cliente'].some(function(k) {
+        return (r[k] || '').toLowerCase().indexOf(q) !== -1;
+      });
+    });
+    if (sortState.column) {
+      filtered = filtered.slice().sort(function(a, b) {
+        var c = compareRows(a, b, sortState.column);
+        return sortState.direction === 'asc' ? c : -c;
+      });
+    }
+    return filtered;
+  }
+
+  function exportToExcel() {
+    var rows = getFilteredSortedRecords();
+    if (!rows.length) { showToast('No hay registros para exportar', 'error'); return; }
+    var cols = ['Fecha Carga','N° Orden','Código Cliente','Cliente','RUC','N° Pedido','Entrega',
+                'Dirección','Ciudad','Zona','Forma Pago','Tipo','Marca','Total Pares','Total Precio',
+                'OBS','Usuario'];
+    function csvCell(v) {
+      var s = (v === null || v === undefined) ? '' : String(v);
+      if (/[",;\r\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+      return s;
+    }
+    var lines = [cols.map(csvCell).join(';')];
+    rows.forEach(function(r) {
+      lines.push(cols.map(function(c) { return csvCell(r[c]); }).join(';'));
+    });
+    // BOM UTF-8 para que Excel respete acentos y la ñ
+    var csv = '﻿' + lines.join('\r\n');
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    var ts = new Date();
+    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+    var fname = 'pedidos_' + ts.getFullYear() + pad(ts.getMonth()+1) + pad(ts.getDate()) +
+                '_' + pad(ts.getHours()) + pad(ts.getMinutes()) + '.csv';
+    a.href = url; a.download = fname;
+    document.body.appendChild(a); a.click();
+    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+    showToast('Exportados ' + rows.length + ' registros', 'success');
+  }
+
+  function applyFilters() {
+    saveFilterState();
+    var filtered = getFilteredSortedRecords();
+
+    // ── KPIs (sobre el conjunto filtrado, ignorando paginación) ──
+    var sumTotal = 0, sumPares = 0;
+    filtered.forEach(function(r) {
+      sumTotal += parseAmount(r['Total Precio']);
+      sumPares += parseAmount(r['Total Pares']);
+    });
+    document.getElementById('kpi-count').textContent = filtered.length;
+    document.getElementById('kpi-pares').textContent = formatAmount(sumPares);
+    document.getElementById('kpi-total').textContent = 'Gs. ' + formatAmount(sumTotal);
+    updateSortIndicators();
+
+    // ── Paginación ──
+    var totalRows = filtered.length;
+    var totalPages = Math.max(1, Math.ceil(totalRows / PAGE_SIZE));
+    if (currentPage > totalPages) currentPage = totalPages;
+    if (currentPage < 1) currentPage = 1;
+    var startIdx = (currentPage - 1) * PAGE_SIZE;
+    var endIdx = Math.min(startIdx + PAGE_SIZE, totalRows);
+    var pageRows = filtered.slice(startIdx, endIdx);
+
+    var pagBar = document.getElementById('pagination-bar');
+    if (totalRows > 0) {
+      pagBar.style.display = '';
+      document.getElementById('pagination-info').textContent =
+        'Mostrando ' + (startIdx + 1) + '–' + endIdx + ' de ' + totalRows;
+      document.getElementById('pagination-page').textContent = currentPage + ' / ' + totalPages;
+      document.getElementById('btn-page-prev').disabled = currentPage <= 1;
+      document.getElementById('btn-page-next').disabled = currentPage >= totalPages;
+    } else {
+      pagBar.style.display = 'none';
+    }
+
+    var tbody = document.getElementById('records-body');
+    if (!filtered.length) {
+      var hasAnyFilter = (document.getElementById('search-input').value || '').trim() ||
+                        (filterSelections['filter-usuario'] || []).length ||
+                        (filterSelections['filter-marca']   || []).length ||
+                        (filterSelections['filter-cliente'] || []).length ||
+                        (filterSelections['filter-tipo']    || []).length ||
+                        (filterSelections['filter-zona']    || []).length ||
+                        document.getElementById('filter-fecha-desde').value ||
+                        document.getElementById('filter-fecha-hasta').value;
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-table">' +
+        (hasAnyFilter ? 'Sin resultados para los filtros aplicados' : 'No hay pedidos guardados aún') +
+        '</td></tr>';
+      return;
+    }
+    filtered = pageRows; // a partir de acá, el render usa solo la página actual
+    // Detectar N° Orden duplicados — alcance global (sobre TODOS los registros, no solo la página)
+    var ordenCounts = {};
+    allRecords.forEach(function(rec) {
+      var k = String(rec['N° Orden'] || '').trim();
+      if (!k) return;
+      ordenCounts[k] = (ordenCounts[k] || 0) + 1;
+    });
+    tbody.innerHTML = filtered.map(function(r) {
+      var rid = esc(r['ID']);
+      var selectedClass = (selectedRowId === r['ID']) ? ' class="row-selected"' : '';
+      // Marca de duplicado en N° Orden
+      var ordenKey = String(r['N° Orden'] || '').trim();
+      var dupCount = ordenKey ? (ordenCounts[ordenKey] || 0) : 0;
+      var dupBadge = dupCount > 1
+        ? '<span class="dup-warning" title="Este N° Orden aparece ' + dupCount + ' veces" aria-label="Duplicado">' +
+          '<svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">' +
+          '<path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>' +
+          '<line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>' +
+          '</svg></span>'
+        : '';
+      return '<tr data-id="' + rid + '" tabindex="0" role="button" aria-label="Ver pedido" ' +
+        'onclick="selectRow(\'' + rid + '\');openViewModal(\'' + rid + '\')" ' +
+        'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();selectRow(\'' + rid + '\');openViewModal(\'' + rid + '\');}"' +
+        selectedClass + '>' +
+        '<td>' + dupBadge + esc(r['N° Orden']) + '</td>' +
+        '<td>' + esc(r['Fecha Carga']) + '</td>' +
+        '<td title="' + esc(r['Cliente']) + '">' + esc(r['Cliente']) + '</td>' +
+        '<td>' + esc(r['Ciudad']) + '</td>' +
+        '<td>' + esc(r['Marca']) + '</td>' +
+        '<td class="username-display">' + esc(r['Usuario']) + '</td>' +
+        '<td style="text-align:right;font-weight:600">' + esc(r['Total Precio']) + '</td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  function esc(v) {
+    if (v === null || v === undefined) return '';
+    return String(v).replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
+  }
+
+  // ────────────────────────────────────────────

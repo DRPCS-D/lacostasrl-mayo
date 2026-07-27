@@ -1,0 +1,68 @@
+  // CONFIRM MODAL (reemplaza al confirm() nativo)
+  // ────────────────────────────────────────────
+  var _confirmResolve = null;
+  var _confirmRequireWord = null;
+  function showConfirm(opts) {
+    opts = opts || {};
+    var overlay = document.getElementById('confirm-overlay');
+    document.getElementById('confirm-title').textContent = opts.title || 'Atención';
+    var body = document.getElementById('confirm-body');
+    var html = '';
+    if (opts.message) html += '<p class="confirm-message">' + esc(opts.message) + '</p>';
+    if (opts.items && opts.items.length) {
+      html += '<div class="confirm-list">';
+      opts.items.forEach(function(it) {
+        html += '<div class="confirm-list-item">' + esc(it) + '</div>';
+      });
+      html += '</div>';
+      if (opts.more) html += '<div class="confirm-list-more">' + esc(opts.more) + '</div>';
+    }
+    if (opts.question) html += '<p class="confirm-question">' + esc(opts.question) + '</p>';
+    _confirmRequireWord = opts.requireWord ? String(opts.requireWord) : null;
+    if (_confirmRequireWord) {
+      html += '<p class="confirm-type-hint">Escribí <code>' + esc(_confirmRequireWord) + '</code> para confirmar:</p>';
+      html += '<input type="text" id="confirm-type-input" class="confirm-type-input" autocomplete="off" spellcheck="false">';
+    }
+    body.innerHTML = html;
+    var okBtn = document.getElementById('confirm-btn-ok');
+    okBtn.textContent = opts.okText || 'Continuar';
+    document.getElementById('confirm-btn-cancel').textContent = opts.cancelText || 'Cancelar';
+    if (_confirmRequireWord) {
+      okBtn.disabled = true;
+      var typeInput = document.getElementById('confirm-type-input');
+      typeInput.addEventListener('input', function() {
+        okBtn.disabled = (typeInput.value.trim().toLowerCase() !== _confirmRequireWord.toLowerCase());
+      });
+      setTimeout(function() { typeInput.focus(); }, 50);
+    } else {
+      okBtn.disabled = false;
+    }
+    overlay.classList.remove('hidden');
+    return new Promise(function(resolve) { _confirmResolve = resolve; });
+  }
+  function _closeConfirm(result) {
+    document.getElementById('confirm-overlay').classList.add('hidden');
+    document.getElementById('confirm-btn-ok').disabled = false;
+    _confirmRequireWord = null;
+    if (_confirmResolve) { var r = _confirmResolve; _confirmResolve = null; r(result); }
+  }
+  document.getElementById('confirm-btn-ok').addEventListener('click', function() {
+    if (this.disabled) return;
+    _closeConfirm(true);
+  });
+  document.getElementById('confirm-btn-cancel').addEventListener('click', function() { _closeConfirm(false); });
+  document.getElementById('confirm-overlay').addEventListener('click', function(e) {
+    if (e.target === this) _closeConfirm(false);
+  });
+  document.addEventListener('keydown', function(e) {
+    var ov = document.getElementById('confirm-overlay');
+    if (!ov || ov.classList.contains('hidden')) return;
+    if (e.key === 'Escape') { e.preventDefault(); _closeConfirm(false); }
+    if (e.key === 'Enter')  {
+      var okBtn = document.getElementById('confirm-btn-ok');
+      if (okBtn.disabled) return;
+      e.preventDefault(); _closeConfirm(true);
+    }
+  });
+
+  // ────────────────────────────────────────────
