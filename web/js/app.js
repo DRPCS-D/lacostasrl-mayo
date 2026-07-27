@@ -3366,8 +3366,10 @@
     if (document.documentElement) document.documentElement.scrollTop = 0;
     if (document.body) document.body.scrollTop = 0;
     if (name === 'nuevo-informe') {
-      // Sin ubicación capturada todavía (o si falló antes) intenta de nuevo al entrar.
-      if (currentInformeLat === null || currentInformeLng === null) captureInformeLocation();
+      // Siempre vuelve a pedir la ubicación al entrar a esta pestaña (no reusa
+      // una capturada antes): si el vendedor ya cargó un informe y se movió a
+      // otro cliente, la posición vieja quedaría desactualizada.
+      captureInformeLocation();
     } else if (name === 'informes') {
       loadInformes();
     } else if (name === 'mapa') {
