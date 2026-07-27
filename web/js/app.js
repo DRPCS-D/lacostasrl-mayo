@@ -146,6 +146,7 @@
     document.getElementById('drawer-username').textContent = authUsername;
     document.getElementById('drawer-role').textContent = (authRol || '').toUpperCase();
     document.getElementById('drawer-avatar').textContent = (authUsername || '?').charAt(0).toUpperCase();
+    document.getElementById('home-username').textContent = authUsername;
     // Admin items
     var isAdmin   = authRol === 'Admin';
     var isAdminL  = authRol === 'AdminL';
@@ -155,6 +156,8 @@
     document.getElementById('drawer-clientes').style.display = '';
     document.getElementById('drawer-reportes').style.display = canSeeAll ? '' : 'none';
     document.getElementById('drawer-informes').style.display = '';
+    document.getElementById('home-card-usuarios').style.display = canSeeAll ? '' : 'none';
+    document.getElementById('home-card-reportes').style.display = canSeeAll ? '' : 'none';
     // Botones de creación: solo Admin
     var btnNewUser = document.getElementById('btn-new-user');
     if (btnNewUser) btnNewUser.style.display = isAdmin ? '' : 'none';
@@ -166,8 +169,8 @@
     // Precargar pedidos en cache (necesario para el chequeo de N° Orden duplicado
     // antes de que el usuario entre a la pestaña Pedidos)
     preloadRecordsCache();
-    // Entrar a la sección Pedidos por defecto
-    switchSection('pedidos', { skipClose: true });
+    // Entrar a la pantalla de Inicio por defecto
+    switchSection('inicio', { skipClose: true });
   }
 
   function refreshClientsCache() {
@@ -269,12 +272,12 @@
   }
 
   // ── Sections (navegación principal desde el drawer) ──
-  var SECTIONS = ['pedidos', 'informes', 'usuarios', 'clientes', 'reportes'];
+  var SECTIONS = ['inicio', 'pedidos', 'informes', 'usuarios', 'clientes', 'reportes'];
   var currentSection = null;
   // Todos los tab-panel que existen fuera de "Pedidos" (Pedidos tiene los suyos
   // propios manejados por switchTab). Se usa para desactivar todo antes de
   // activar el panel de la sección elegida.
-  var NON_PEDIDOS_PANELS = ['nuevo-informe', 'informes', 'mapa', 'usuarios', 'clientes', 'reportes'];
+  var NON_PEDIDOS_PANELS = ['inicio', 'nuevo-informe', 'informes', 'mapa', 'usuarios', 'clientes', 'reportes'];
 
   function switchSection(name, opts) {
     opts = opts || {};
@@ -290,7 +293,16 @@
     var tabBar = document.getElementById('tab-bar');
     var tabBarInformes = document.getElementById('tab-bar-informes');
 
-    if (name === 'pedidos') {
+    if (name === 'inicio') {
+      tabBar.style.display = 'none';
+      tabBarInformes.style.display = 'none';
+      ['nuevo', 'guardados'].concat(NON_PEDIDOS_PANELS.filter(function(t) { return t !== 'inicio'; }))
+        .forEach(function(t) {
+          var pb = document.getElementById('panel-' + t);
+          if (pb) pb.classList.remove('active');
+        });
+      document.getElementById('panel-inicio').classList.add('active');
+    } else if (name === 'pedidos') {
       tabBar.style.display = '';
       tabBarInformes.style.display = 'none';
       NON_PEDIDOS_PANELS.forEach(function(t) {
