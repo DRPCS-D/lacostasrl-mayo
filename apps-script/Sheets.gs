@@ -213,7 +213,20 @@ function getOrCreateUsersSheet() {
     sheet.setColumnWidth(6, 70);
   }
   ensureTextIdColumn(sheet);
+  ensureUserFotoColumn(sheet);
   return sheet;
+}
+
+function ensureUserFotoColumn(sheet) {
+  var lastCol = sheet.getLastColumn();
+  var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
+  if (headers.indexOf('FotoUrl') === -1) {
+    var col = lastCol + 1;
+    var cell = sheet.getRange(1, col);
+    cell.setValue('FotoUrl');
+    cell.setFontWeight('bold').setBackground('#8A1B1A').setFontColor('#ffffff').setHorizontalAlignment('center');
+    sheet.setColumnWidth(col, 260);
+  }
 }
 
 function ensureImageColumn(sheet) {

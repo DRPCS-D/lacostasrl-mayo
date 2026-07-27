@@ -1190,6 +1190,15 @@
     <div style="margin-bottom:20px">
       <h2 id="user-modal-title">Nuevo Usuario</h2>
     </div>
+    <label class="modal-label">Foto de perfil</label>
+    <div class="user-photo-picker">
+      <div class="user-photo-preview" id="u-foto-preview">?</div>
+      <div class="user-photo-picker-actions">
+        <button type="button" class="btn-refresh" onclick="document.getElementById('u-foto-input').click()">Elegir foto</button>
+        <button type="button" class="btn-clear-filters" id="u-foto-remove" style="display:none" onclick="removeUserFoto()">Quitar foto</button>
+      </div>
+      <input type="file" id="u-foto-input" accept="image/*" style="display:none" onchange="onUserFotoSelected(this)">
+    </div>
     <label class="modal-label">Usuario</label>
     <input type="text" id="u-username" autocomplete="off" autocapitalize="none">
     <label class="modal-label" id="u-password-label">Contraseña</label>

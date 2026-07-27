@@ -18,6 +18,8 @@
   // ── Users state ──
   var usersCache   = {};
   var editingUserId = null;
+  var pendingUserFoto = null; // { dataUrl, mime } tras elegir/comprimir una foto nueva
+  var removeUserFotoFlag = false; // true = el usuario tocó "Quitar foto" al editar
 
   // ── Clientes state ──
   var allClients = [];                  // [{codigo, razonSocial, nombreFantasia}]
@@ -537,6 +539,30 @@
         } else {
           resolve({ dataUrl: out, mime: 'image/jpeg' });
         }
+      };
+      img.onerror = function() {
+        resolve({ dataUrl: dataUrl, mime: detectMimeFromDataUrl(dataUrl) || 'image/jpeg' });
+      };
+      img.src = dataUrl;
+    });
+  }
+
+  // Recorta al centro en cuadrado y redimensiona para foto de perfil de usuario
+  // (mucho más chica que una foto de pedido — se muestra en un círculo de ~40px).
+  var AVATAR_MAX_DIM = 300;
+  function compressAvatarDataUrl(dataUrl) {
+    return new Promise(function(resolve) {
+      var img = new Image();
+      img.onload = function() {
+        var w = img.naturalWidth, h = img.naturalHeight;
+        var side = Math.min(w, h);
+        var sx = (w - side) / 2, sy = (h - side) / 2;
+        var out = Math.min(AVATAR_MAX_DIM, side);
+        var canvas = document.createElement('canvas');
+        canvas.width = out; canvas.height = out;
+        var ctx = canvas.getContext('2d');
+        ctx.drawImage(img, sx, sy, side, side, 0, 0, out, out);
+        resolve({ dataUrl: canvas.toDataURL('image/jpeg', IMG_JPEG_QUALITY), mime: 'image/jpeg' });
       };
       img.onerror = function() {
         resolve({ dataUrl: dataUrl, mime: detectMimeFromDataUrl(dataUrl) || 'image/jpeg' });
@@ -2947,6 +2973,45 @@
     }).join('');
   }
 
+  function resetUserFotoPicker(initial, existingUrl) {
+    pendingUserFoto = null;
+    removeUserFotoFlag = false;
+    document.getElementById('u-foto-input').value = '';
+    var preview = document.getElementById('u-foto-preview');
+    var removeBtn = document.getElementById('u-foto-remove');
+    if (existingUrl) {
+      preview.innerHTML = '<img src="' + esc(existingUrl) + '" alt="">';
+      removeBtn.style.display = '';
+    } else {
+      preview.textContent = (initial || '?').toUpperCase();
+      removeBtn.style.display = 'none';
+    }
+  }
+
+  function onUserFotoSelected(input) {
+    var file = input.files && input.files[0];
+    if (!file) return;
+    var reader = new FileReader();
+    reader.onload = function(e) {
+      compressAvatarDataUrl(e.target.result).then(function(c) {
+        pendingUserFoto = c;
+        removeUserFotoFlag = false;
+        document.getElementById('u-foto-preview').innerHTML = '<img src="' + c.dataUrl + '" alt="">';
+        document.getElementById('u-foto-remove').style.display = '';
+      });
+    };
+    reader.readAsDataURL(file);
+  }
+
+  function removeUserFoto() {
+    pendingUserFoto = null;
+    removeUserFotoFlag = true;
+    var username = document.getElementById('u-username').value.trim();
+    document.getElementById('u-foto-preview').textContent = (username || '?').charAt(0).toUpperCase();
+    document.getElementById('u-foto-remove').style.display = 'none';
+    document.getElementById('u-foto-input').value = '';
+  }
+
   function openNewUserModal() {
     editingUserId = null;
     document.getElementById('user-modal-title').textContent = 'Nuevo Usuario';
@@ -2955,6 +3020,7 @@
     document.getElementById('u-rol').value = 'User';
     document.getElementById('u-password-label').textContent = 'Contraseña';
     document.getElementById('u-activo-group').style.display = 'none';
+    resetUserFotoPicker('?', '');
     document.getElementById('modal-user-overlay').classList.remove('hidden');
     setTimeout(function() { document.getElementById('u-username').focus(); }, 80);
   }
@@ -2970,6 +3036,7 @@
     document.getElementById('u-rol').value = u.rol;
     document.getElementById('u-activo').value = u.activo;
     document.getElementById('u-activo-group').style.display = 'block';
+    resetUserFotoPicker(u.username, u.fotoUrl);
     var muo = document.getElementById('modal-user-overlay');
     muo.classList.remove('hidden');
     focusFirstField(muo);
@@ -2978,6 +3045,8 @@
   function closeUserModal() {
     document.getElementById('modal-user-overlay').classList.add('hidden');
     editingUserId = null;
+    pendingUserFoto = null;
+    removeUserFotoFlag = false;
   }
 
   function saveUser() {
@@ -2991,6 +3060,8 @@
     if (editingUserId) {
       var userData = { username: username, rol: rol, activo: activo };
       if (password) userData.password = password;
+      if (pendingUserFoto) { userData.fotoBase64 = pendingUserFoto.dataUrl.split(',')[1]; userData.fotoMime = pendingUserFoto.mime; }
+      else if (removeUserFotoFlag) { userData.removeFoto = true; }
       google.script.run
         .withSuccessHandler(function() {
           btn.disabled = false; btn.textContent = 'Guardar';
@@ -3004,6 +3075,8 @@
         }))
         .updateUser(authToken, editingUserId, userData);
     } else {
+      var newUserData = { username: username, password: password, rol: rol };
+      if (pendingUserFoto) { newUserData.fotoBase64 = pendingUserFoto.dataUrl.split(',')[1]; newUserData.fotoMime = pendingUserFoto.mime; }
       google.script.run
         .withSuccessHandler(function() {
           btn.disabled = false; btn.textContent = 'Guardar';
@@ -3015,7 +3088,7 @@
           btn.disabled = false; btn.textContent = 'Guardar';
           showToast('Error: ' + (err ? err.message : ''), 'error');
         }))
-        .createUser(authToken, { username: username, password: password, rol: rol });
+        .createUser(authToken, newUserData);
     }
   }
 
@@ -3584,6 +3657,30 @@
   }
 
   // ── Mapa de visitas (Leaflet + OpenStreetMap) ──
+  // Ícono circular por vendedor: su foto de perfil si tiene, si no la inicial
+  // de su usuario (mismo criterio de fallback que el avatar del drawer).
+  function informeMarkerIcon(r) {
+    var username = String(r['Usuario'] || '');
+    var initial = esc((username.charAt(0) || '?').toUpperCase());
+    var foto = r['FotoUsuario'];
+    var inner = foto
+      ? '<img src="' + esc(foto) + '" alt="" data-initial="' + initial + '" onerror="handleInformeMarkerImgError(this)">'
+      : '<span class="informe-marker-initial">' + initial + '</span>';
+    return L.divIcon({
+      html: '<div class="informe-marker">' + inner + '</div>',
+      className: 'informe-marker-wrap',
+      iconSize: [40, 48],
+      iconAnchor: [20, 47],
+      popupAnchor: [0, -44]
+    });
+  }
+  function handleInformeMarkerImgError(img) {
+    var span = document.createElement('span');
+    span.className = 'informe-marker-initial';
+    span.textContent = img.getAttribute('data-initial') || '?';
+    img.parentNode.replaceChild(span, img);
+  }
+
   function renderInformesMap() {
     var container = document.getElementById('informes-map');
     if (!container || typeof L === 'undefined') return;
@@ -3613,7 +3710,7 @@
       var popup = '<b>' + esc(r['Cliente']) + '</b><br>' +
         esc(r['Fecha']) + ' · ' + esc(r['Usuario']) + '<br>' +
         (r['Comentario'] ? esc(r['Comentario']) : '<i>Sin comentario</i>');
-      var marker = L.marker([lat, lng]).bindPopup(popup);
+      var marker = L.marker([lat, lng], { icon: informeMarkerIcon(r) }).bindPopup(popup);
       marker.addTo(informesMap);
       marker._informeId = r['ID'];
       informesMarkers.push(marker);

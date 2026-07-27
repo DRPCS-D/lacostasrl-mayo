@@ -9,6 +9,28 @@ function getDriveFolder() {
   return folder;
 }
 
+// Subcarpeta "user" dentro de la carpeta raíz, para no mezclar fotos de
+// perfil de vendedores con las fotos de órdenes de pedido.
+function getUsersPhotoFolder() {
+  var root = getDriveFolder();
+  var it = root.getFoldersByName('user');
+  if (it.hasNext()) return it.next();
+  return root.createFolder('user');
+}
+
+// Sube la foto de perfil de un vendedor y devuelve una URL pública
+// embebible directo en un <img src="...">.
+function saveUserPhotoToDrive(base64Data, mimeType, username) {
+  var folder = getUsersPhotoFolder();
+  var ext = (mimeType.split('/')[1] || 'jpg').toLowerCase();
+  var clean = String(username || 'usuario').replace(/[\\/:*?"<>|\r\n\t]/g, '').replace(/\s+/g, '_').trim();
+  var filename = (clean || 'usuario') + '_' + Date.now() + '.' + ext;
+  var blob = Utilities.newBlob(Utilities.base64Decode(base64Data), mimeType, filename);
+  var file = folder.createFile(blob);
+  file.setSharing(DriveApp.Access.ANYONE_WITH_LINK, DriveApp.Permission.VIEW);
+  return 'https://drive.google.com/thumbnail?id=' + file.getId() + '&sz=w200';
+}
+
 function saveImageToDrive(base64Data, mimeType, meta) {
   var folder = getDriveFolder();
   var ext = mimeType.split('/')[1] || 'jpg';

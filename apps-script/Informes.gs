@@ -44,6 +44,7 @@ function getInformes(token) {
   var headers = display[0];
   var latIdx = headers.indexOf('Latitud');
   var lngIdx = headers.indexOf('Longitud');
+  var fotosByUser = getUserPhotoMap();
   var rows = display.slice(1).map(function(row, i) {
     var obj = {};
     headers.forEach(function(h, j) { obj[String(h)] = row[j]; });
@@ -51,6 +52,7 @@ function getInformes(token) {
     // el locale del Sheet (coma decimal) rompe el parseFloat del frontend.
     if (latIdx !== -1) obj['Latitud'] = raw[i + 1][latIdx];
     if (lngIdx !== -1) obj['Longitud'] = raw[i + 1][lngIdx];
+    obj['FotoUsuario'] = fotosByUser[String(obj['Usuario'] || '').trim().toLowerCase()] || '';
     return obj;
   }).reverse();
 
