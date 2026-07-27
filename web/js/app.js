@@ -40,6 +40,37 @@
   // INIT
   // ────────────────────────────────────────────
   window.onload = function() {
+    checkForNewVersion(function(isOutdated) {
+      if (isOutdated) {
+        showUpdateRequiredModal();
+        return; // no arranca la app hasta que actualice
+      }
+      initApp();
+    });
+  };
+
+  // Compara el APP_VERSION con el que ya está en memoria (embebido en esta
+  // misma carga de página) contra el que está publicado ahora mismo en
+  // js/version.js, pidiéndolo con cache: 'no-store' para saltarse tanto el
+  // caché HTTP del navegador como el del service worker. Si difieren, esta
+  // pestaña (o la PWA instalada) está corriendo código viejo.
+  function checkForNewVersion(callback) {
+    fetch('js/version.js?_=' + Date.now(), { cache: 'no-store' })
+      .then(function(res) { return res.text(); })
+      .then(function(text) {
+        var m = text.match(/APP_VERSION\s*=\s*['"]([^'"]+)['"]/);
+        var remoteVersion = m ? m[1] : null;
+        callback(!!remoteVersion && remoteVersion !== APP_VERSION);
+      })
+      .catch(function() { callback(false); }); // sin red/offline → seguir con lo que ya está cargado
+  }
+
+  function showUpdateRequiredModal() {
+    document.getElementById('loading-screen').style.display = 'none';
+    document.getElementById('update-required-overlay').style.display = 'flex';
+  }
+
+  function initApp() {
     authToken    = localStorage.getItem('authToken');
     authUsername = localStorage.getItem('authUsername');
     authRol      = localStorage.getItem('authRol');
@@ -70,7 +101,7 @@
       })
       .withFailureHandler(function() { showScreen('login'); })
       .hasUsers();
-  };
+  }
 
   // ────────────────────────────────────────────
   // SCREEN MANAGEMENT
@@ -186,8 +217,12 @@
   // queda pegado con JS/CSS viejos aunque ya hayan instalado la PWA.
   function forceUpdateApp(btnEl) {
     if (btnEl) btnEl.setAttribute('disabled', 'true');
-    var label = document.getElementById('drawer-update-label');
-    if (label) label.textContent = 'Actualizando...';
+    // El botón del drawer tiene el texto en un <span> aparte (comparte fila con
+    // el ícono y el badge); el del modal de actualización obligatoria es texto
+    // plano dentro del propio botón.
+    var drawerLabel = document.getElementById('drawer-update-label');
+    if (drawerLabel) drawerLabel.textContent = 'Actualizando...';
+    if (btnEl && btnEl.id === 'update-required-btn') btnEl.textContent = 'Actualizando...';
 
     var unregisterSw = ('serviceWorker' in navigator)
       ? navigator.serviceWorker.getRegistrations().then(function(regs) {

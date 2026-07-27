@@ -158,6 +158,15 @@ app. Además, si el navegador ya bajó el service worker nuevo en segundo plano
 (pero la pestaña abierta sigue con el viejo), el drawer muestra automáticamente
 un badge "Nueva versión" sobre ese botón.
 
+**Chequeo obligatorio al abrir la app:** antes de arrancar (`window.onload`),
+`checkForNewVersion()` en `app.js` pide `js/version.js` con `cache: 'no-store'`
+(esquivando el caché HTTP y el del service worker) y compara el `APP_VERSION`
+recién bajado contra el que ya está cargado en esta pestaña. Si difieren, la
+app no llega a mostrar login ni datos: tapa todo con un modal ("Hay una
+versión nueva") con un único botón "Actualizar ahora", que dispara el mismo
+`forceUpdateApp()` del drawer. Si no hay red, el chequeo falla en silencio y
+la app sigue con lo que ya tiene cargado (no bloquea por un error de conexión).
+
 ## Escalar
 
 - **Más de una instalación / cliente:** cada una es un Apps Script propio (con su

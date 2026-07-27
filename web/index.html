@@ -38,6 +38,28 @@
   <span class="loading-text">Cargando...</span>
 </div>
 
+<!-- Bloquea el uso de la app hasta actualizar, si detecta una versión nueva publicada -->
+<div class="modal-overlay" id="update-required-overlay" style="display:none;z-index:500">
+  <div class="confirm-modal">
+    <div class="confirm-head">
+      <div class="confirm-icon">
+        <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round">
+          <polyline points="23 4 23 10 17 10"/>
+          <polyline points="1 20 1 14 7 14"/>
+          <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
+        </svg>
+      </div>
+      <h3 class="confirm-title">Hay una versión nueva</h3>
+    </div>
+    <div class="confirm-body">
+      <p class="confirm-message">Actualizamos la app. Tenés que actualizar para seguir usándola.</p>
+    </div>
+    <div class="confirm-actions">
+      <button type="button" class="confirm-btn-ok" id="update-required-btn" onclick="forceUpdateApp(this)" style="flex:1">Actualizar ahora</button>
+    </div>
+  </div>
+</div>
+
 <!-- Auth Screen -->
 <div id="auth-screen">
 
