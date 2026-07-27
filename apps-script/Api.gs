@@ -26,7 +26,11 @@ var API_WHITELIST = {
   saveOrder: saveOrder,
   getOrders: getOrders,
   updateOrder: updateOrder,
-  deleteOrder: deleteOrder
+  deleteOrder: deleteOrder,
+  saveInforme: saveInforme,
+  getInformes: getInformes,
+  updateInforme: updateInforme,
+  deleteInforme: deleteInforme
 };
 
 function doPost(e) {

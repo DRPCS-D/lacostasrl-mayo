@@ -36,6 +36,23 @@
   var editingNewImageMime   = null;
   var editingCurrentImgId   = null;
 
+  // ── Informes state (visitas de vendedores) ──
+  var allInformes = [];
+  var informesCache = {};
+  var viewingInformeId = null;
+  var editingInformeId = null;
+  var selectedInformeClienteCodigo = '';     // cliente elegido en Nuevo informe
+  var selectedEditInformeClienteCodigo = ''; // cliente elegido al editar un informe
+  var currentInformeLat = null;
+  var currentInformeLng = null;
+  var informesMap = null;       // instancia Leaflet, se crea una sola vez
+  var informesMarkers = [];     // markers actuales del mapa
+  var informesCurrentTab = 'nuevo-informe';
+  var informesCurrentPage = 1;
+  var INFORMES_PAGE_SIZE = 10;
+  var informeSortState = { column: null, direction: 'asc' };
+  var INFORME_DATE_COLS = ['Fecha'];
+
   // ────────────────────────────────────────────
   // INIT
   // ────────────────────────────────────────────
@@ -133,6 +150,7 @@
     document.getElementById('drawer-usuarios').style.display = canSeeAll ? '' : 'none';
     document.getElementById('drawer-clientes').style.display = '';
     document.getElementById('drawer-reportes').style.display = canSeeAll ? '' : 'none';
+    document.getElementById('drawer-informes').style.display = '';
     // Botones de creación: solo Admin
     var btnNewUser = document.getElementById('btn-new-user');
     if (btnNewUser) btnNewUser.style.display = isAdmin ? '' : 'none';
@@ -247,8 +265,12 @@
   }
 
   // ── Sections (navegación principal desde el drawer) ──
-  var SECTIONS = ['pedidos', 'usuarios', 'clientes', 'reportes'];
+  var SECTIONS = ['pedidos', 'informes', 'usuarios', 'clientes', 'reportes'];
   var currentSection = null;
+  // Todos los tab-panel que existen fuera de "Pedidos" (Pedidos tiene los suyos
+  // propios manejados por switchTab). Se usa para desactivar todo antes de
+  // activar el panel de la sección elegida.
+  var NON_PEDIDOS_PANELS = ['nuevo-informe', 'informes', 'mapa', 'usuarios', 'clientes', 'reportes'];
 
   function switchSection(name, opts) {
     opts = opts || {};
@@ -262,31 +284,54 @@
     });
 
     var tabBar = document.getElementById('tab-bar');
+    var tabBarInformes = document.getElementById('tab-bar-informes');
+
     if (name === 'pedidos') {
       tabBar.style.display = '';
-      switchTab('nuevo');
-    } else if (name === 'usuarios') {
-      tabBar.style.display = 'none';
-      ['nuevo', 'guardados', 'clientes', 'reportes'].forEach(function(t) {
+      tabBarInformes.style.display = 'none';
+      NON_PEDIDOS_PANELS.forEach(function(t) {
         var pb = document.getElementById('panel-' + t);
         if (pb) pb.classList.remove('active');
       });
+      switchTab('nuevo');
+    } else if (name === 'informes') {
+      tabBar.style.display = 'none';
+      tabBarInformes.style.display = '';
+      ['nuevo', 'guardados'].concat(NON_PEDIDOS_PANELS.filter(function(t) {
+        return t !== 'nuevo-informe' && t !== 'informes' && t !== 'mapa';
+      })).forEach(function(t) {
+        var pb = document.getElementById('panel-' + t);
+        if (pb) pb.classList.remove('active');
+      });
+      switchInformeTab(informesCurrentTab || 'nuevo-informe');
+    } else if (name === 'usuarios') {
+      tabBar.style.display = 'none';
+      tabBarInformes.style.display = 'none';
+      ['nuevo', 'guardados'].concat(NON_PEDIDOS_PANELS.filter(function(t) { return t !== 'usuarios'; }))
+        .forEach(function(t) {
+          var pb = document.getElementById('panel-' + t);
+          if (pb) pb.classList.remove('active');
+        });
       document.getElementById('panel-usuarios').classList.add('active');
       loadUsers();
     } else if (name === 'clientes') {
       tabBar.style.display = 'none';
-      ['nuevo', 'guardados', 'usuarios', 'reportes'].forEach(function(t) {
-        var pb = document.getElementById('panel-' + t);
-        if (pb) pb.classList.remove('active');
-      });
+      tabBarInformes.style.display = 'none';
+      ['nuevo', 'guardados'].concat(NON_PEDIDOS_PANELS.filter(function(t) { return t !== 'clientes'; }))
+        .forEach(function(t) {
+          var pb = document.getElementById('panel-' + t);
+          if (pb) pb.classList.remove('active');
+        });
       document.getElementById('panel-clientes').classList.add('active');
       loadClientes();
     } else if (name === 'reportes') {
       tabBar.style.display = 'none';
-      ['nuevo', 'guardados', 'usuarios', 'clientes'].forEach(function(t) {
-        var pb = document.getElementById('panel-' + t);
-        if (pb) pb.classList.remove('active');
-      });
+      tabBarInformes.style.display = 'none';
+      ['nuevo', 'guardados'].concat(NON_PEDIDOS_PANELS.filter(function(t) { return t !== 'reportes'; }))
+        .forEach(function(t) {
+          var pb = document.getElementById('panel-' + t);
+          if (pb) pb.classList.remove('active');
+        });
       document.getElementById('panel-reportes').classList.add('active');
       loadReportes(false);
     }
@@ -375,8 +420,20 @@
     currentPage = 1;
     sortState = { column: null, direction: 'asc' };
     filterSelections = { 'filter-cliente': [], 'filter-marca': [], 'filter-usuario': [], 'filter-tipo': [], 'filter-zona': [],
-      'filter-cliente-ciudad': [], 'filter-cliente-zona': [] };
+      'filter-cliente-ciudad': [], 'filter-cliente-zona': [],
+      'if-filter-cliente': [], 'if-filter-usuario': [], 'if-filter-ciudad': [], 'if-filter-zona': [] };
     try { sessionStorage.removeItem(FILTER_STATE_KEY); } catch(e) {}
+    allInformes = [];
+    informesCache = {};
+    viewingInformeId = null;
+    editingInformeId = null;
+    selectedInformeClienteCodigo = '';
+    selectedEditInformeClienteCodigo = '';
+    currentInformeLat = null;
+    currentInformeLng = null;
+    informesCurrentPage = 1;
+    informeSortState = { column: null, direction: 'asc' };
+    informesCurrentTab = 'nuevo-informe';
   }
 
   // Wraps failure handlers to catch session expiry
@@ -403,13 +460,11 @@
       if (tb) tb.classList.toggle('active', t === name);
       if (pb) pb.classList.toggle('active', t === name);
     });
-    // Asegurar que los paneles de Usuarios / Clientes / Reportes no queden visibles
-    var pu = document.getElementById('panel-usuarios');
-    if (pu) pu.classList.remove('active');
-    var pc = document.getElementById('panel-clientes');
-    if (pc) pc.classList.remove('active');
-    var pr = document.getElementById('panel-reportes');
-    if (pr) pr.classList.remove('active');
+    // Asegurar que los paneles de otras secciones no queden visibles
+    ['usuarios', 'clientes', 'reportes', 'nuevo-informe', 'informes', 'mapa'].forEach(function(t) {
+      var p = document.getElementById('panel-' + t);
+      if (p) p.classList.remove('active');
+    });
     // Resetear scroll al cambiar de pestaña
     window.scrollTo(0, 0);
     if (document.documentElement) document.documentElement.scrollTop = 0;
@@ -2982,6 +3037,23 @@
       getCodigo: function() { return selectedEditClienteCodigo; },
       setCodigo: function(v) { selectedEditClienteCodigo = v; },
       filtered: [], activeIdx: -1
+    },
+    'if-cliente': {
+      badgeId: 'if-cliente-codigo-badge',
+      suggestionsId: 'if-cliente-suggestions',
+      ciudadFieldId: 'if-ciudad',
+      getCodigo: function() { return selectedInformeClienteCodigo; },
+      setCodigo: function(v) { selectedInformeClienteCodigo = v; },
+      onSelect: function() { updateInformeSaveButtonState(); },
+      filtered: [], activeIdx: -1
+    },
+    'ie-cliente': {
+      badgeId: 'ie-cliente-codigo-badge',
+      suggestionsId: 'ie-cliente-suggestions',
+      ciudadFieldId: null,
+      getCodigo: function() { return selectedEditInformeClienteCodigo; },
+      setCodigo: function(v) { selectedEditInformeClienteCodigo = v; },
+      filtered: [], activeIdx: -1
     }
   };
 
@@ -3047,6 +3119,7 @@
       }
     }
     hideClienteSuggestions(inputId);
+    if (typeof ctx.onSelect === 'function') ctx.onSelect(c);
   }
 
   // Borra la selección actual sin tocar el texto del input (usado al recargar / al editar manualmente).
@@ -3059,6 +3132,7 @@
       var ciudadEl = document.getElementById(ctx.ciudadFieldId);
       if (ciudadEl) { ciudadEl.value = ''; ciudadEl.classList.remove('filled'); }
     }
+    if (typeof ctx.onSelect === 'function') ctx.onSelect(null);
   }
 
   function onClienteInput(e) {
@@ -3121,7 +3195,543 @@
   (function() {
     bindClienteAutocomplete('f-cliente');
     bindClienteAutocomplete('e-cliente');
+    bindClienteAutocomplete('if-cliente');
+    bindClienteAutocomplete('ie-cliente');
   })();
+
+  // ────────────────────────────────────────────
+  // INFORMES — Visitas de vendedores
+  // ────────────────────────────────────────────
+
+  // Cambia entre las 3 sub-pestañas de Informes (Nuevo informe / Informes / Mapa)
+  function switchInformeTab(name) {
+    informesCurrentTab = name;
+    ['nuevo-informe', 'informes', 'mapa'].forEach(function(t) {
+      var tb = document.getElementById('tab-' + t);
+      var pb = document.getElementById('panel-' + t);
+      if (tb) tb.classList.toggle('active', t === name);
+      if (pb) pb.classList.toggle('active', t === name);
+    });
+    window.scrollTo(0, 0);
+    if (document.documentElement) document.documentElement.scrollTop = 0;
+    if (document.body) document.body.scrollTop = 0;
+    if (name === 'nuevo-informe') {
+      // Sin ubicación capturada todavía (o si falló antes) intenta de nuevo al entrar.
+      if (currentInformeLat === null || currentInformeLng === null) captureInformeLocation();
+    } else if (name === 'informes') {
+      loadInformes();
+    } else if (name === 'mapa') {
+      loadInformes(); // por si nunca se visitó la pestaña Informes en esta sesión
+      setTimeout(renderInformesMap, 0); // el contenedor recién queda visible ahora
+    }
+  }
+
+  // ── Geolocalización (obligatoria para guardar) ──
+  function captureInformeLocation() {
+    var box    = document.getElementById('if-location-box');
+    var status = document.getElementById('if-location-status');
+    var coords = document.getElementById('if-location-coords');
+    var btn    = document.getElementById('if-btn-location');
+    currentInformeLat = null;
+    currentInformeLng = null;
+    box.className = 'location-box';
+    status.textContent = 'Obteniendo ubicación...';
+    coords.textContent = '';
+    btn.textContent = 'Reintentar';
+    updateInformeSaveButtonState();
+
+    if (!('geolocation' in navigator)) {
+      box.className = 'location-box err';
+      status.textContent = 'Este dispositivo/navegador no soporta ubicación. No se puede guardar el informe.';
+      return;
+    }
+    navigator.geolocation.getCurrentPosition(
+      function(pos) {
+        currentInformeLat = pos.coords.latitude;
+        currentInformeLng = pos.coords.longitude;
+        box.className = 'location-box ok';
+        status.textContent = 'Ubicación obtenida';
+        coords.textContent = currentInformeLat.toFixed(6) + ', ' + currentInformeLng.toFixed(6);
+        updateInformeSaveButtonState();
+      },
+      function(err) {
+        box.className = 'location-box err';
+        var msg = 'No se pudo obtener la ubicación.';
+        if (err && err.code === 1) msg = 'Ubicación denegada. Habilitá el permiso de ubicación para guardar el informe.';
+        else if (err && err.code === 2) msg = 'Ubicación no disponible en este momento.';
+        else if (err && err.code === 3) msg = 'Se agotó el tiempo esperando la ubicación.';
+        status.textContent = msg;
+        updateInformeSaveButtonState();
+      },
+      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
+    );
+  }
+
+  function updateInformeSaveButtonState() {
+    var btn = document.getElementById('if-btn-save');
+    if (!btn) return;
+    var hasClient   = !!selectedInformeClienteCodigo;
+    var hasLocation = currentInformeLat !== null && currentInformeLng !== null;
+    btn.disabled = !(hasClient && hasLocation);
+  }
+
+  function clearInformeForm() {
+    document.getElementById('if-cliente').value = '';
+    clearClienteSelection('if-cliente');
+    hideClienteSuggestions('if-cliente');
+    document.getElementById('if-comentario').value = '';
+    updateInformeSaveButtonState();
+  }
+
+  function saveInforme() {
+    if (!selectedInformeClienteCodigo) {
+      showToast('Elegí un cliente del listado', 'error');
+      return;
+    }
+    if (currentInformeLat === null || currentInformeLng === null) {
+      showToast('Se necesita la ubicación para guardar el informe', 'error');
+      return;
+    }
+    var data = {
+      codigoCliente: selectedInformeClienteCodigo,
+      comentario: document.getElementById('if-comentario').value.trim(),
+      lat: currentInformeLat,
+      lng: currentInformeLng
+    };
+    var btn = document.getElementById('if-btn-save');
+    var label = document.getElementById('if-save-label');
+    btn.disabled = true; label.textContent = 'Guardando...';
+    google.script.run
+      .withSuccessHandler(function() {
+        btn.disabled = false; label.textContent = 'Guardar informe';
+        showToast('Informe guardado', 'success');
+        clearInformeForm();
+        captureInformeLocation(); // recapturar para la próxima visita
+        loadInformes();
+      })
+      .withFailureHandler(handleAuthError(function(err) {
+        updateInformeSaveButtonState();
+        label.textContent = 'Guardar informe';
+        showToast('Error: ' + (err ? err.message : 'desconocido'), 'error');
+      }))
+      .saveInforme(authToken, data);
+  }
+
+  // ── Tabla de Informes ──
+  function loadInformes() {
+    setTableLoading('panel-informes', true);
+    google.script.run
+      .withSuccessHandler(function(rows) {
+        setTableLoading('panel-informes', false);
+        renderInformes(rows || []);
+      })
+      .withFailureHandler(handleAuthError(function(err) {
+        setTableLoading('panel-informes', false);
+        var tbody = document.getElementById('informes-body');
+        if (tbody) tbody.innerHTML =
+          '<tr><td colspan="7" class="empty-table">Error al cargar: ' + (err ? err.message : 'desconocido') + '</td></tr>';
+      }))
+      .getInformes(authToken);
+  }
+
+  function renderInformes(rows) {
+    allInformes = rows;
+    informesCache = {};
+    rows.forEach(function(r) { if (r['ID']) informesCache[r['ID']] = r; });
+    informesCurrentPage = 1;
+    populateSelectFilter('if-filter-cliente', rows, 'Cliente', 'Todos los clientes');
+    populateSelectFilter('if-filter-usuario', rows, 'Usuario', 'Todos los usuarios');
+    populateSelectFilter('if-filter-ciudad',  rows, 'Ciudad',  'Todas las ciudades');
+    populateSelectFilter('if-filter-zona',    rows, 'Zona',    'Todas las zonas');
+    updateInformeFiltersCount();
+    applyInformeFilters();
+    if (informesCurrentTab === 'mapa') renderInformesMap();
+  }
+
+  function getFilteredSortedInformes() {
+    var searchEl = document.getElementById('if-search-input');
+    var q = searchEl ? (searchEl.value || '').toLowerCase().trim() : '';
+    var clientes = filterSelections['if-filter-cliente'] || [];
+    var usuarios = filterSelections['if-filter-usuario'] || [];
+    var ciudades = filterSelections['if-filter-ciudad']  || [];
+    var zonas    = filterSelections['if-filter-zona']    || [];
+    var fDesde = document.getElementById('if-filter-fecha-desde');
+    var fHasta = document.getElementById('if-filter-fecha-hasta');
+    var tsDesde = (fDesde && fDesde.value) ? new Date(fDesde.value + 'T00:00:00').getTime() : null;
+    var tsHasta = (fHasta && fHasta.value) ? new Date(fHasta.value + 'T23:59:59').getTime() : null;
+    var filtered = allInformes.filter(function(r) {
+      if (clientes.length && clientes.indexOf(r['Cliente']) === -1) return false;
+      if (usuarios.length && usuarios.indexOf(r['Usuario']) === -1) return false;
+      if (ciudades.length && ciudades.indexOf(r['Ciudad'])  === -1) return false;
+      if (zonas.length    && zonas.indexOf(r['Zona'])       === -1) return false;
+      if (tsDesde !== null || tsHasta !== null) {
+        var rTs = parseDateDMY(r['Fecha']);
+        if (!rTs) return false;
+        if (tsDesde !== null && rTs < tsDesde) return false;
+        if (tsHasta !== null && rTs > tsHasta) return false;
+      }
+      if (!q) return true;
+      return ['Cliente', 'Comentario', 'Usuario', 'Ciudad', 'Zona'].some(function(k) {
+        return (r[k] || '').toLowerCase().indexOf(q) !== -1;
+      });
+    });
+    if (informeSortState.column) {
+      filtered = filtered.slice().sort(function(a, b) {
+        var va = a[informeSortState.column], vb = b[informeSortState.column];
+        var c = INFORME_DATE_COLS.indexOf(informeSortState.column) !== -1
+          ? parseDateDMY(va) - parseDateDMY(vb)
+          : String(va || '').toLowerCase().localeCompare(String(vb || '').toLowerCase(), 'es');
+        return informeSortState.direction === 'asc' ? c : -c;
+      });
+    }
+    return filtered;
+  }
+
+  function sortInformesBy(key) {
+    if (informeSortState.column === key) {
+      informeSortState.direction = informeSortState.direction === 'asc' ? 'desc' : 'asc';
+    } else {
+      informeSortState.column = key;
+      informeSortState.direction = 'asc';
+    }
+    informesCurrentPage = 1;
+    applyInformeFilters();
+  }
+
+  function updateInformeSortIndicators() {
+    var panel = document.getElementById('panel-informes');
+    if (!panel) return;
+    panel.querySelectorAll('.sort-ind').forEach(function(el) {
+      if (el.getAttribute('data-key') === informeSortState.column) {
+        el.classList.add('active');
+        el.textContent = informeSortState.direction === 'asc' ? '▲' : '▼';
+      } else {
+        el.classList.remove('active');
+        el.textContent = '⇅';
+      }
+    });
+  }
+
+  function changeInformePage(delta) {
+    informesCurrentPage += delta;
+    if (informesCurrentPage < 1) informesCurrentPage = 1;
+    applyInformeFilters();
+  }
+
+  function applyInformeFilters() {
+    var filtered = getFilteredSortedInformes();
+    document.getElementById('if-kpi-count').textContent = filtered.length;
+    updateInformeSortIndicators();
+
+    var totalRows = filtered.length;
+    var totalPages = Math.max(1, Math.ceil(totalRows / INFORMES_PAGE_SIZE));
+    if (informesCurrentPage > totalPages) informesCurrentPage = totalPages;
+    if (informesCurrentPage < 1) informesCurrentPage = 1;
+    var startIdx = (informesCurrentPage - 1) * INFORMES_PAGE_SIZE;
+    var endIdx = Math.min(startIdx + INFORMES_PAGE_SIZE, totalRows);
+    var pageRows = filtered.slice(startIdx, endIdx);
+
+    var pagBar = document.getElementById('if-pagination-bar');
+    if (totalRows > 0) {
+      pagBar.style.display = '';
+      document.getElementById('if-pagination-info').textContent =
+        'Mostrando ' + (startIdx + 1) + '–' + endIdx + ' de ' + totalRows;
+      document.getElementById('if-pagination-page').textContent = informesCurrentPage + ' / ' + totalPages;
+      document.getElementById('if-btn-page-prev').disabled = informesCurrentPage <= 1;
+      document.getElementById('if-btn-page-next').disabled = informesCurrentPage >= totalPages;
+    } else {
+      pagBar.style.display = 'none';
+    }
+
+    var tbody = document.getElementById('informes-body');
+    if (!filtered.length) {
+      var hasAnyFilter = (document.getElementById('if-search-input').value || '').trim() ||
+        (filterSelections['if-filter-cliente'] || []).length ||
+        (filterSelections['if-filter-usuario'] || []).length ||
+        (filterSelections['if-filter-ciudad']  || []).length ||
+        (filterSelections['if-filter-zona']    || []).length ||
+        (document.getElementById('if-filter-fecha-desde') || {}).value ||
+        (document.getElementById('if-filter-fecha-hasta') || {}).value;
+      tbody.innerHTML = '<tr><td colspan="7" class="empty-table">' +
+        (hasAnyFilter ? 'Sin resultados para los filtros aplicados' : 'No hay informes cargados aún') +
+        '</td></tr>';
+      return;
+    }
+    tbody.innerHTML = pageRows.map(function(r) {
+      var rid = esc(r['ID']);
+      var hasCoords = r['Latitud'] !== '' && r['Longitud'] !== '' && r['Latitud'] != null && r['Longitud'] != null;
+      var ubicCell = hasCoords
+        ? '<a href="#" class="map-link" onclick="event.stopPropagation();openInformeInMap(\'' + rid + '\');return false;">Ver en mapa</a>'
+        : '<span style="color:var(--gray-400)">—</span>';
+      var comentario = String(r['Comentario'] || '');
+      var comentarioShort = comentario.length > 60 ? comentario.slice(0, 60) + '…' : comentario;
+      return '<tr data-id="' + rid + '" tabindex="0" role="button" aria-label="Ver informe" ' +
+        'onclick="openInformeViewModal(\'' + rid + '\')" ' +
+        'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openInformeViewModal(\'' + rid + '\');}">' +
+        '<td>' + esc(r['Fecha']) + '</td>' +
+        '<td title="' + esc(r['Cliente']) + '">' + esc(r['Cliente']) + '</td>' +
+        '<td>' + esc(r['Ciudad']) + '</td>' +
+        '<td>' + esc(r['Zona']) + '</td>' +
+        '<td title="' + esc(comentario) + '">' + esc(comentarioShort) + '</td>' +
+        '<td class="username-display">' + esc(r['Usuario']) + '</td>' +
+        '<td>' + ubicCell + '</td>' +
+      '</tr>';
+    }).join('');
+  }
+
+  // ── Filtros de Informes ──
+  var debouncedInformeFilterChange = debounce(onInformeFilterChange, 300);
+  function onInformeFilterChange() {
+    informesCurrentPage = 1;
+    updateInformeFiltersCount();
+    applyInformeFilters();
+    if (informesCurrentTab === 'mapa') renderInformesMap();
+  }
+  function toggleInformeFiltersPanel(e) {
+    if (e && e.stopPropagation) e.stopPropagation();
+    var panel = document.getElementById('if-filters-panel');
+    var btn = document.getElementById('if-btn-filters');
+    var willShow = panel.hasAttribute('hidden');
+    if (willShow) { panel.removeAttribute('hidden'); btn.classList.add('active'); }
+    else          { panel.setAttribute('hidden', ''); btn.classList.remove('active'); closeAllSdrops(); }
+  }
+  function clearAllInformeFilters() {
+    ['if-filter-cliente', 'if-filter-usuario', 'if-filter-ciudad', 'if-filter-zona'].forEach(function(id) {
+      filterSelections[id] = [];
+      var hidden = document.getElementById(id);
+      if (!hidden) return;
+      var sdrop = hidden.closest('.sdrop');
+      sdrop.querySelectorAll('.sdrop-option').forEach(function(o) {
+        o.classList.remove('active');
+        var ck = o.querySelector('.sdrop-check'); if (ck) ck.textContent = '';
+      });
+      updateSdropLabel(sdrop);
+    });
+    document.getElementById('if-search-input').value = '';
+    var fd = document.getElementById('if-filter-fecha-desde'); if (fd) fd.value = '';
+    var fh = document.getElementById('if-filter-fecha-hasta'); if (fh) fh.value = '';
+    informeSortState = { column: null, direction: 'asc' };
+    updateInformeFiltersCount();
+    onInformeFilterChange();
+  }
+  function updateInformeFiltersCount() {
+    var n = 0;
+    ['if-filter-cliente', 'if-filter-usuario', 'if-filter-ciudad', 'if-filter-zona'].forEach(function(id) {
+      if ((filterSelections[id] || []).length > 0) n++;
+    });
+    var fd = document.getElementById('if-filter-fecha-desde');
+    var fh = document.getElementById('if-filter-fecha-hasta');
+    if ((fd && fd.value) || (fh && fh.value)) n++;
+    var badge = document.getElementById('if-filters-count');
+    if (!badge) return;
+    if (n > 0) { badge.style.display = ''; badge.textContent = n; }
+    else        { badge.style.display = 'none'; }
+  }
+
+  // ── Mapa de visitas (Leaflet + OpenStreetMap) ──
+  function renderInformesMap() {
+    var container = document.getElementById('informes-map');
+    if (!container || typeof L === 'undefined') return;
+
+    if (!informesMap) {
+      informesMap = L.map(container).setView([-25.2637, -57.5759], 6); // Paraguay aprox., ajustado por fitBounds abajo
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+      }).addTo(informesMap);
+    }
+
+    informesMarkers.forEach(function(m) { informesMap.removeLayer(m); });
+    informesMarkers = [];
+
+    var rows = getFilteredSortedInformes().filter(function(r) {
+      var lat = parseFloat(r['Latitud']), lng = parseFloat(r['Longitud']);
+      return isFinite(lat) && isFinite(lng);
+    });
+
+    var countEl = document.getElementById('map-points-count');
+    if (countEl) countEl.textContent = rows.length ? '(' + rows.length + ' puntos)' : '(sin puntos con los filtros actuales)';
+
+    rows.forEach(function(r) {
+      var lat = parseFloat(r['Latitud']), lng = parseFloat(r['Longitud']);
+      var popup = '<b>' + esc(r['Cliente']) + '</b><br>' +
+        esc(r['Fecha']) + ' · ' + esc(r['Usuario']) + '<br>' +
+        (r['Comentario'] ? esc(r['Comentario']) : '<i>Sin comentario</i>');
+      var marker = L.marker([lat, lng]).bindPopup(popup);
+      marker.addTo(informesMap);
+      marker._informeId = r['ID'];
+      informesMarkers.push(marker);
+    });
+
+    if (rows.length) {
+      var bounds = L.latLngBounds(rows.map(function(r) { return [parseFloat(r['Latitud']), parseFloat(r['Longitud'])]; }));
+      informesMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
+    }
+    setTimeout(function() { informesMap.invalidateSize(); }, 0);
+  }
+
+  // Desde la tabla: abre el mapa centrado/con popup en el informe elegido
+  function openInformeInMap(id) {
+    switchSection('informes');
+    switchInformeTab('mapa');
+    setTimeout(function() {
+      var r = informesCache[id];
+      if (!r) return;
+      var lat = parseFloat(r['Latitud']), lng = parseFloat(r['Longitud']);
+      if (!isFinite(lat) || !isFinite(lng)) return;
+      informesMap.setView([lat, lng], 16);
+      var marker = informesMarkers.filter(function(m) { return m._informeId === id; })[0];
+      if (marker) marker.openPopup();
+    }, 150);
+  }
+
+  // ── Modal Ver Informe ──
+  function openInformeViewModal(id) {
+    var r = informesCache[id];
+    if (!r) return;
+    viewingInformeId = id;
+    document.getElementById('iv-record-id').textContent = 'ID: ' + id;
+    document.getElementById('iv-cliente').textContent   = r['Cliente']   || '';
+    document.getElementById('iv-usuario').textContent   = r['Usuario']   || '';
+    document.getElementById('iv-fecha').textContent     = r['Fecha']     || '';
+    document.getElementById('iv-ciudad').textContent    = r['Ciudad']    || '';
+    document.getElementById('iv-zona').textContent       = r['Zona']      || '';
+    document.getElementById('iv-comentario').textContent = r['Comentario'] || '';
+    var codCli = String(r['Código Cliente'] || '').trim();
+    var badge = document.getElementById('iv-cliente-codigo-badge');
+    if (codCli) {
+      badge.textContent = codCli; badge.className = 'cliente-badge'; badge.style.display = 'inline-block';
+    } else {
+      badge.style.display = 'none'; badge.textContent = '';
+    }
+    var lat = parseFloat(r['Latitud']), lng = parseFloat(r['Longitud']);
+    var link = document.getElementById('iv-ubicacion-link');
+    if (isFinite(lat) && isFinite(lng)) {
+      link.href = 'https://www.google.com/maps?q=' + lat + ',' + lng;
+      link.style.display = '';
+      link.textContent = 'Ver en Google Maps (' + lat.toFixed(6) + ', ' + lng.toFixed(6) + ')';
+    } else {
+      link.removeAttribute('href');
+      link.style.display = 'none';
+    }
+    document.getElementById('btn-iv-edit').style.display   = (authRol === 'Admin') ? '' : 'none';
+    document.getElementById('btn-iv-delete').style.display = (authRol === 'Admin') ? '' : 'none';
+    document.getElementById('modal-view-informe-overlay').classList.remove('hidden');
+  }
+
+  function closeInformeViewModal() {
+    document.getElementById('modal-view-informe-overlay').classList.add('hidden');
+    viewingInformeId = null;
+  }
+
+  function switchInformeViewToEdit() {
+    if (!viewingInformeId) return;
+    var id = viewingInformeId;
+    closeInformeViewModal();
+    editInforme(id);
+  }
+
+  function deleteCurrentInforme() {
+    if (!viewingInformeId) return;
+    if (authRol !== 'Admin') return;
+    var id = viewingInformeId;
+    var r = informesCache[id] || {};
+    var info = [];
+    if (r['Cliente']) info.push(r['Cliente']);
+    if (r['Fecha'])   info.push(r['Fecha']);
+    showConfirm({
+      title: 'Eliminar informe',
+      message: '¿Confirmás que querés eliminar este informe de visita? Esta acción no se puede deshacer.',
+      items: info,
+      requireWord: 'eliminar',
+      okText: 'Eliminar',
+      cancelText: 'Cancelar'
+    }).then(function(ok) {
+      if (!ok) return;
+      var btn = document.getElementById('btn-iv-delete');
+      btn.disabled = true; btn.textContent = 'Eliminando...';
+      google.script.run
+        .withSuccessHandler(function() {
+          btn.disabled = false; btn.textContent = 'Borrar';
+          showToast('Informe eliminado', 'success');
+          closeInformeViewModal();
+          loadInformes();
+        })
+        .withFailureHandler(handleAuthError(function(err) {
+          btn.disabled = false; btn.textContent = 'Borrar';
+          showToast('Error: ' + (err ? err.message : 'desconocido'), 'error');
+        }))
+        .deleteInforme(authToken, id);
+    });
+  }
+
+  document.getElementById('modal-view-informe-overlay').addEventListener('mousedown', function(e) {
+    if (e.target === this) closeInformeViewModal();
+  });
+
+  // ── Editar Informe (Admin only) ──
+  function editInforme(id) {
+    var r = informesCache[id];
+    if (!r) return;
+    editingInformeId = id;
+    document.getElementById('edit-informe-id').textContent = 'ID: ' + id;
+    document.getElementById('ie-cliente').value = r['Cliente'] || '';
+    clearClienteSelection('ie-cliente');
+    hideClienteSuggestions('ie-cliente');
+    var codPrev = String(r['Código Cliente'] || '').trim();
+    if (codPrev) {
+      var match = allClients.find(function(c) { return String(c.codigo || '').toLowerCase() === codPrev.toLowerCase(); });
+      if (match) {
+        selectedEditInformeClienteCodigo = match.codigo;
+        var badge = document.getElementById('ie-cliente-codigo-badge');
+        if (badge) { badge.textContent = match.codigo; badge.className = 'cliente-badge'; badge.style.display = 'inline-block'; }
+      }
+    }
+    document.getElementById('ie-comentario').value = r['Comentario'] || '';
+    var meo = document.getElementById('modal-edit-informe-overlay');
+    meo.classList.remove('hidden');
+    focusFirstField(meo);
+  }
+
+  function closeInformeEditModal() {
+    document.getElementById('modal-edit-informe-overlay').classList.add('hidden');
+    editingInformeId = null;
+    clearClienteSelection('ie-cliente');
+    hideClienteSuggestions('ie-cliente');
+  }
+
+  function saveInformeEdit() {
+    if (!editingInformeId) return;
+    if (!selectedEditInformeClienteCodigo) {
+      var input = document.getElementById('ie-cliente');
+      input.classList.add('field-missing');
+      setTimeout(function() { input.classList.remove('field-missing'); }, 500);
+      showToast('Elegí un cliente del listado', 'error');
+      return;
+    }
+    var data = {
+      codigoCliente: selectedEditInformeClienteCodigo,
+      comentario: document.getElementById('ie-comentario').value.trim()
+    };
+    var btn = document.getElementById('btn-informe-edit-save');
+    btn.disabled = true; btn.textContent = 'Guardando...';
+    google.script.run
+      .withSuccessHandler(function() {
+        btn.disabled = false; btn.textContent = 'Guardar cambios';
+        showToast('Informe actualizado', 'success');
+        closeInformeEditModal();
+        loadInformes();
+      })
+      .withFailureHandler(handleAuthError(function(err) {
+        btn.disabled = false; btn.textContent = 'Guardar cambios';
+        showToast('Error: ' + (err ? err.message : 'desconocido'), 'error');
+      }))
+      .updateInforme(authToken, editingInformeId, data);
+  }
+
+  document.getElementById('modal-edit-informe-overlay').addEventListener('mousedown', function(e) {
+    if (e.target === this) closeInformeEditModal();
+  });
 
   // ────────────────────────────────────────────
   // CLIENTES — Gestión (Admin only)

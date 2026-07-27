@@ -49,6 +49,28 @@ function getOrCreateSheet() {
   return sheet;
 }
 
+function getOrCreateInformesSheet() {
+  var ss = getOrCreateSpreadsheet();
+  var sheet = ss.getSheetByName(INFORMES_SHEET_NAME);
+  if (!sheet) {
+    sheet = ss.insertSheet(INFORMES_SHEET_NAME);
+    var headers = [
+      'ID', 'Fecha', 'Cliente', 'Código Cliente', 'Ciudad', 'Zona',
+      'Comentario', 'Latitud', 'Longitud', 'Usuario'
+    ];
+    sheet.appendRow(headers);
+    var hr = sheet.getRange(1, 1, 1, headers.length);
+    hr.setFontWeight('bold').setBackground('#8A1B1A').setFontColor('#ffffff').setHorizontalAlignment('center');
+    sheet.setFrozenRows(1);
+    sheet.setColumnWidth(1, 90);
+    sheet.setColumnWidth(2, 130);
+    sheet.setColumnWidth(3, 180);
+    sheet.setColumnWidth(7, 260);
+  }
+  ensureTextIdColumn(sheet);
+  return sheet;
+}
+
 function ensureTextIdColumn(sheet) {
   var lastRow = sheet.getLastRow();
   if (lastRow < 2) {

@@ -2,8 +2,9 @@
 
 App para cargar pedidos a partir de una foto o PDF de la orden de compra. La imagen
 se procesa con OpenAI Vision, los datos se completan en un formulario y todo se
-guarda en Google Sheets. Incluye gestión de clientes, usuarios y un módulo de
-reportes con exportación a PDF, CSV y Excel.
+guarda en Google Sheets. Incluye gestión de clientes, usuarios, un módulo de
+reportes con exportación a PDF, CSV y Excel, y un módulo de **Informes** para que
+los vendedores registren visitas a clientes con ubicación GPS y las vean en un mapa.
 
 **Arquitectura:** el frontend se sirve como página estática desde **GitHub Pages**;
 Google Apps Script queda como **API JSON pura** (autenticación, Sheets, Drive,
@@ -11,14 +12,15 @@ OpenAI). El frontend le habla a esa API por `fetch`.
 
 ## Base de datos
 
-Google Sheets. Un único spreadsheet con tres pestañas, creadas y migradas
+Google Sheets. Un único spreadsheet con cuatro pestañas, creadas y migradas
 automáticamente por el código:
 
-| Pestaña    | Contenido                                    |
-|------------|-----------------------------------------------|
-| `Pedidos`  | Un pedido por fila                           |
-| `Clientes` | Padrón de clientes (código, razón social, …) |
-| `Usuarios` | Cuentas y roles (`Admin`, `AdminL`, usuario) |
+| Pestaña    | Contenido                                              |
+|------------|----------------------------------------------------------|
+| `Pedidos`  | Un pedido por fila                                     |
+| `Clientes` | Padrón de clientes (código, razón social, …)           |
+| `Usuarios` | Cuentas y roles (`Admin`, `AdminL`, usuario)           |
+| `Informes` | Visitas de vendedores a clientes (comentario + GPS)    |
 
 Las imágenes de las órdenes se guardan en una carpeta de Google Drive.
 
@@ -33,6 +35,7 @@ apps-script/                     # Proyecto de Apps Script (clasp rootDir) — s
 ├── Users.gs                     # ABM de usuarios (solo Admin)
 ├── Clients.gs                   # ABM de clientes
 ├── Orders.gs                    # ABM de pedidos y totales por cliente
+├── Informes.gs                  # ABM de informes de visitas (comentario + ubicación GPS)
 ├── Images.gs                    # Drive + extracción OCR con OpenAI Vision
 └── Sheets.gs                    # Creación de pestañas, migraciones de columnas, link del spreadsheet
 
@@ -43,8 +46,9 @@ web/                              # Frontend estático — esto es lo que sirve 
 ├── icons/                       # Íconos PWA (192/512, maskable, apple-touch-icon)
 ├── css/styles.css               # Estilos
 └── js/
+    ├── version.js                # APP_VERSION (fuente única para sw.js y el drawer)
     ├── api.js                   # google.script.run reimplementado sobre fetch()
-    └── app.js                   # Lógica de cliente (auth, pedidos, clientes, usuarios, reportes)
+    └── app.js                   # Lógica de cliente (auth, pedidos, informes, clientes, usuarios, reportes)
 
 scripts/gen-icons.js              # Genera web/icons/*.png (sin dependencias externas)
 
@@ -65,6 +69,25 @@ como *simple request* para no disparar un preflight OPTIONS (que fallaría). Por
 `api.js` no fija `Content-Type` — al mandar un string como body, el navegador lo
 manda como `text/plain`, que está en la lista segura de CORS. Si en algún momento
 alguien agrega headers custom al fetch, esto se rompe.
+
+## Informes de visitas
+
+Módulo para que los vendedores registren visitas a clientes, con tres pestañas:
+
+- **Nuevo informe**: elegís el cliente del mismo padrón que usa Pedidos (autocompleta
+  Ciudad), escribís un comentario y la app captura la ubicación GPS del dispositivo
+  con `navigator.geolocation`. **La ubicación es obligatoria** — sin ella el botón
+  Guardar queda deshabilitado. Fecha/hora y el usuario que carga se sellan solos en
+  el backend (`Informes.gs`), igual que en Pedidos.
+- **Informes**: tabla con búsqueda, filtros (cliente/usuario/ciudad/zona + rango de
+  fechas) y paginación, mismo patrón que "Pedidos guardados".
+- **Mapa**: todas las visitas filtradas como puntos en un mapa **Leaflet +
+  OpenStreetMap** (CDN, sin API key — necesita internet para ver los mosaicos del
+  mapa). Los filtros se editan desde la pestaña Informes; el mapa siempre refleja
+  el mismo conjunto ya filtrado.
+
+Permisos igual que Pedidos: Admin edita/borra cualquier informe, AdminL ve todo en
+solo lectura, User (vendedor) ve y carga solo los propios.
 
 ## Puesta en marcha
 
