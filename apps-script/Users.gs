@@ -6,6 +6,7 @@ function listUsers(token) {
   if (!ss) return [];
   var sheet = ss.getSheetByName(USERS_SHEET_NAME);
   if (!sheet || sheet.getLastRow() <= 1) return [];
+  ensureUserFotoColumn(sheet);
   var data = sheet.getDataRange().getDisplayValues();
   var headers = data[0];
   var fotoIdx = headers.indexOf('FotoUrl');
@@ -26,6 +27,7 @@ function getUserPhotoMap() {
   if (!ss) return map;
   var sheet = ss.getSheetByName(USERS_SHEET_NAME);
   if (!sheet || sheet.getLastRow() <= 1) return map;
+  ensureUserFotoColumn(sheet);
   var data = sheet.getDataRange().getDisplayValues();
   var headers = data[0];
   var userIdx = headers.indexOf('Username');
@@ -67,6 +69,7 @@ function updateUser(token, userId, userData) {
   if (!ss) throw new Error('Sin datos.');
   var sheet = ss.getSheetByName(USERS_SHEET_NAME);
   if (!sheet) throw new Error('Sin hoja de usuarios.');
+  ensureUserFotoColumn(sheet);
   var data = sheet.getDataRange().getValues();
   var headers = data[0];
   var fotoIdx = headers.indexOf('FotoUrl');
