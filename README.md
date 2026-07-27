@@ -135,12 +135,28 @@ Al abrir la página por primera vez, si no hay usuarios cargados en la pestaña
   los scripts de CDN (pdf.js, heic2any) — esos siempre van a la red. Esto
   permite que la app abra rápido y offline muestre al menos la interfaz, pero
   igual necesita conexión para cargar/guardar pedidos reales.
-- Cada vez que cambie algo en `web/`, conviene subir el número en
-  `CACHE_NAME` de `sw.js` (ej. `pedidos-lacosta-v2`) para que los clientes que
-  ya instalaron la app descarten el caché viejo en el próximo `activate`.
 - Los íconos (`web/icons/*.png`) se generan con `node scripts/gen-icons.js`
   (no depende de ImageMagick/sharp, dibuja el PNG a mano). Para cambiar el
   diseño del ícono, editá ese script y volvé a correrlo.
+
+### Versionado y actualización forzada
+
+`web/js/version.js` define `APP_VERSION`, la única fuente de verdad que usan:
+
+- `sw.js` (vía `importScripts`) para nombrar el caché (`pedidos-lacosta-vX`) —
+  subir `APP_VERSION` invalida el caché viejo en el próximo `activate`.
+- El drawer, que muestra `vX` al pie del menú lateral.
+
+**Cada vez que cambie algo en `web/`, subí el número en `web/js/version.js`**
+antes de pushear. Eso solo no alcanza para que una pestaña ya abierta (o la
+PWA ya instalada) baje los archivos nuevos de inmediato — el navegador recién
+revisa si hay un service worker distinto en su próxima visita o `update()`
+periódico. Por eso el drawer tiene un botón **"Actualizar app"**: desregistra
+el service worker, borra todos los cachés y recarga con cache-busting, así el
+usuario nunca queda pegado con una versión vieja aunque no vuelva a cerrar la
+app. Además, si el navegador ya bajó el service worker nuevo en segundo plano
+(pero la pestaña abierta sigue con el viejo), el drawer muestra automáticamente
+un badge "Nueva versión" sobre ese botón.
 
 ## Escalar
 
