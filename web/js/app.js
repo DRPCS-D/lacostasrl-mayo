@@ -289,6 +289,11 @@
       var el = document.getElementById('drawer-' + s);
       if (el) el.classList.toggle('active', s === name);
     });
+    // Marcar item activo en los accesos rápidos de abajo (solo cubre Inicio/Pedidos/Informes)
+    ['inicio', 'pedidos', 'informes'].forEach(function(s) {
+      var el = document.getElementById('bnav-' + s);
+      if (el) el.classList.toggle('active', s === name);
+    });
 
     var tabBar = document.getElementById('tab-bar');
     var tabBarInformes = document.getElementById('tab-bar-informes');

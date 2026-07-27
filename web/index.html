@@ -1011,6 +1011,31 @@
     </div>
 
   </main>
+
+  <!-- Accesos rápidos (estilo app móvil) -->
+  <nav id="bottom-nav">
+    <button class="bnav-item" id="bnav-inicio" onclick="switchSection('inicio')">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+        <path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/>
+        <polyline points="9 22 9 12 15 12 15 22"/>
+      </svg>
+      Inicio
+    </button>
+    <button class="bnav-item" id="bnav-pedidos" onclick="switchSection('pedidos')">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/>
+        <polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/>
+      </svg>
+      Pedidos
+    </button>
+    <button class="bnav-item" id="bnav-informes" onclick="switchSection('informes')">
+      <svg width="21" height="21" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2">
+        <path d="M21 10c0 7-9 12-9 12s-9-5-9-12a9 9 0 0 1 18 0z"/>
+        <circle cx="12" cy="10" r="3"/>
+      </svg>
+      Informes
+    </button>
+  </nav>
 </div><!-- /app-wrapper -->
 
 <!-- Toast -->
