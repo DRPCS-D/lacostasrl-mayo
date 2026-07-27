@@ -3212,6 +3212,7 @@
       if (tb) tb.classList.toggle('active', t === name);
       if (pb) pb.classList.toggle('active', t === name);
     });
+    relocateInformeFiltersWrap(name);
     window.scrollTo(0, 0);
     if (document.documentElement) document.documentElement.scrollTop = 0;
     if (document.body) document.body.scrollTop = 0;
@@ -3486,6 +3487,14 @@
     updateInformeFiltersCount();
     applyInformeFilters();
     if (informesCurrentTab === 'mapa') renderInformesMap();
+  }
+  function relocateInformeFiltersWrap(name) {
+    var wrap = document.getElementById('if-filters-wrap');
+    if (!wrap) return;
+    var target = name === 'mapa'
+      ? document.getElementById('if-filters-anchor-mapa')
+      : document.getElementById('if-search-row');
+    if (target && wrap.parentNode !== target) target.appendChild(wrap);
   }
   function toggleInformeFiltersPanel(e) {
     if (e && e.stopPropagation) e.stopPropagation();
