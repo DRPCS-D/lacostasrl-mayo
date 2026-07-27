@@ -4,18 +4,14 @@ const CLIENTS_SHEET_NAME = 'Clientes';
 const OPENAI_ENDPOINT = 'https://api.openai.com/v1/chat/completions';
 const OPENAI_MODEL = 'gpt-4o';
 
-function doGet() {
-  return HtmlService.createTemplateFromFile('index')
-    .evaluate()
-    .setTitle('LA COSTA S.R.L')
-    .addMetaTag('viewport', 'width=device-width, initial-scale=1')
-    .setXFrameOptionsMode(HtmlService.XFrameOptionsMode.ALLOWALL);
-}
-
 /**
- * Inserta el contenido de otro archivo HTML del proyecto.
- * Usado por index.html para componer CSS, vistas y scripts.
+ * Este proyecto ya no sirve la interfaz: el frontend vive en GitHub Pages
+ * (carpeta web/ del repo, compilada a docs/) y le habla a este Web App
+ * como API JSON vía doPost(). Ver Api.gs.
  */
-function include(filename) {
-  return HtmlService.createHtmlOutputFromFile(filename).getContent();
+function doGet() {
+  return ContentService.createTextOutput(
+    'API de LA COSTA S.R.L.\n' +
+    'Este endpoint es el backend (JSON vía POST). El frontend se sirve desde GitHub Pages.'
+  ).setMimeType(ContentService.MimeType.TEXT);
 }

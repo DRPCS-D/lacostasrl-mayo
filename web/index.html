@@ -24,7 +24,6 @@
   <script>
     // Marca el body como mobile y aplica layout vertical para Nuevo Pedido.
     // NOTA: ya NO usamos el hack de `zoom` CSS porque rompe el file picker en Android Brave.
-    // Con `addMetaTag('viewport', ...)` en el doGet del Code.gs ya alcanza para mobile.
     (function() {
       var isMobile = /Mobi|Android|iPhone|iPad|iPod/i.test(navigator.userAgent);
       if (!isMobile) return;
@@ -63,6 +62,7 @@
 <?!= include('ui-modales'); ?>
 
 <script>
+<?!= include('js-api'); ?>
 <?!= include('js-state'); ?>
 <?!= include('js-app'); ?>
 <?!= include('js-auth'); ?>
