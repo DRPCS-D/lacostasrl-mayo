@@ -39,11 +39,18 @@ function getInformes(token) {
   var sheet = ss.getSheetByName(INFORMES_SHEET_NAME);
   if (!sheet || sheet.getLastRow() <= 1) return [];
 
-  var data = sheet.getDataRange().getDisplayValues();
-  var headers = data[0];
-  var rows = data.slice(1).map(function(row) {
+  var display = sheet.getDataRange().getDisplayValues();
+  var raw = sheet.getDataRange().getValues();
+  var headers = display[0];
+  var latIdx = headers.indexOf('Latitud');
+  var lngIdx = headers.indexOf('Longitud');
+  var rows = display.slice(1).map(function(row, i) {
     var obj = {};
-    headers.forEach(function(h, i) { obj[String(h)] = row[i]; });
+    headers.forEach(function(h, j) { obj[String(h)] = row[j]; });
+    // Latitud/Longitud van como número crudo (no getDisplayValues) porque
+    // el locale del Sheet (coma decimal) rompe el parseFloat del frontend.
+    if (latIdx !== -1) obj['Latitud'] = raw[i + 1][latIdx];
+    if (lngIdx !== -1) obj['Longitud'] = raw[i + 1][lngIdx];
     return obj;
   }).reverse();
 
