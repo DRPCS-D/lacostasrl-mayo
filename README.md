@@ -38,10 +38,15 @@ apps-script/                     # Proyecto de Apps Script (clasp rootDir) — s
 
 web/                              # Frontend estático — esto es lo que sirve GitHub Pages
 ├── index.html                   # Markup de la app
+├── manifest.json                # Manifest PWA (nombre, íconos, modo standalone)
+├── sw.js                        # Service worker: cachea el app shell, no toca API ni CDN
+├── icons/                       # Íconos PWA (192/512, maskable, apple-touch-icon)
 ├── css/styles.css               # Estilos
 └── js/
     ├── api.js                   # google.script.run reimplementado sobre fetch()
     └── app.js                   # Lógica de cliente (auth, pedidos, clientes, usuarios, reportes)
+
+scripts/gen-icons.js              # Genera web/icons/*.png (sin dependencias externas)
 
 .github/workflows/deploy-pages.yml # Publica web/ a GitHub Pages en cada push a main
 ```
@@ -114,6 +119,28 @@ que actualizar `web/js/api.js` y volver a pushear.
 
 Al abrir la página por primera vez, si no hay usuarios cargados en la pestaña
 `Usuarios` aparece la pantalla de setup para crear el administrador inicial.
+
+## PWA (instalar como app)
+
+`web/manifest.json` + `web/sw.js` hacen que el navegador ofrezca "Instalar app" /
+"Agregar a pantalla de inicio":
+
+- **Android/Chrome/Edge:** aparece el banner de instalación automáticamente (o
+  desde el menú ⋮ → "Instalar app"). Requiere HTTPS, que GitHub Pages ya da.
+- **iPhone/Safari:** no hay banner automático — hay que abrir el sitio, tocar
+  Compartir → "Agregar a inicio". Las meta tags `apple-mobile-web-app-*` en
+  `index.html` hacen que se vea sin la barra de Safari.
+- El service worker (`sw.js`) solo cachea el *app shell* (HTML/CSS/JS/íconos,
+  mismo origen). Nunca cachea las llamadas a la API (`POST` a Apps Script) ni
+  los scripts de CDN (pdf.js, heic2any) — esos siempre van a la red. Esto
+  permite que la app abra rápido y offline muestre al menos la interfaz, pero
+  igual necesita conexión para cargar/guardar pedidos reales.
+- Cada vez que cambie algo en `web/`, conviene subir el número en
+  `CACHE_NAME` de `sw.js` (ej. `pedidos-lacosta-v2`) para que los clientes que
+  ya instalaron la app descarten el caché viejo en el próximo `activate`.
+- Los íconos (`web/icons/*.png`) se generan con `node scripts/gen-icons.js`
+  (no depende de ImageMagick/sharp, dibuja el PNG a mano). Para cambiar el
+  diseño del ícono, editá ese script y volvé a correrlo.
 
 ## Escalar
 
