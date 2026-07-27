@@ -25,7 +25,7 @@ Las imágenes de las órdenes se guardan en una carpeta de Google Drive.
 ## Estructura
 
 ```
-src/                             # Proyecto de Apps Script (clasp rootDir) — solo backend
+apps-script/                     # Proyecto de Apps Script (clasp rootDir) — solo backend
 ├── appsscript.json              # Manifiesto
 ├── Config.gs                    # Constantes y doGet() (texto de estado, ya no HTML)
 ├── Api.gs                       # doPost(): dispatcher JSON + whitelist de funciones
@@ -34,38 +34,22 @@ src/                             # Proyecto de Apps Script (clasp rootDir) — s
 ├── Clients.gs                   # ABM de clientes
 ├── Orders.gs                    # ABM de pedidos y totales por cliente
 ├── Images.gs                    # Drive + extracción OCR con OpenAI Vision
-├── Sheets.gs                    # Creación de pestañas, migraciones de columnas
-└── Setup.gs                     # Vincular spreadsheet, utilidades de diagnóstico
+└── Sheets.gs                    # Creación de pestañas, migraciones de columnas, link del spreadsheet
 
-web/                              # Fuente del frontend (NO se sube a Apps Script)
-├── index.html                   # Esqueleto: compone todo con <?!= include('...'); ?>
-├── js-api.html                  # google.script.run reimplementado sobre fetch()
-├── css-*.html (7 archivos)       # Estilos, uno por área
-├── ui-*.html (8 archivos)        # Vistas (pantallas, paneles, modales)
-└── js-*.html (16 archivos)       # Lógica de cliente, una por área
+web/                              # Frontend estático — esto es lo que sirve GitHub Pages
+├── index.html                   # Markup de la app
+├── css/styles.css               # Estilos
+└── js/
+    ├── api.js                   # google.script.run reimplementado sobre fetch()
+    └── app.js                   # Lógica de cliente (auth, pedidos, clientes, usuarios, reportes)
 
-scripts/
-└── build-pages.js                # Resuelve los include() de web/ y genera docs/index.html
-
-docs/                              # Salida del build — es lo que sirve GitHub Pages
-                                    # (generado en CI, no está commiteado)
-
-.github/workflows/deploy-pages.yml # Build + deploy automático a Pages en cada push a main
+.github/workflows/deploy-pages.yml # Publica web/ a GitHub Pages en cada push a main
 ```
 
-`web/index.html` no contiene lógica: arma la página con `<?!= include('...') ?>`,
-igual que un template de Apps Script. Todos los `js-*.html` se inyectan dentro de un
-único bloque `<script>`, así que comparten el mismo scope global y el hoisting
-funciona igual que en un archivo único. `scripts/build-pages.js` resuelve esos
-mismos `include()` en tiempo de build (no hace falta el runtime de Apps Script para
-eso) y escribe el resultado ya aplanado en `docs/index.html`.
-
-## Cómo se conectan Pages y Apps Script
-
-`web/js-api.html` reemplaza `google.script.run` por un objeto con la misma forma
+`web/js/api.js` reemplaza `google.script.run` por un objeto con la misma forma
 (`.withSuccessHandler(...).withFailureHandler(...).nombreDeFuncion(args)`), pero
 implementado con `fetch()` contra la URL de implementación del Web App. Por eso
-ninguno de los ~25 call sites del resto del frontend tuvo que cambiar.
+ninguno de los ~25 call sites de `app.js` tuvo que cambiar.
 
 En el backend, `Api.gs` expone un único `doPost(e)` que recibe `{ fn, args }` y
 llama a la función correspondiente de una whitelist explícita — no ejecuta nombres
@@ -73,8 +57,8 @@ arbitrarios.
 
 **CORS:** Apps Script no implementa `doOptions`, así que el fetch tiene que viajar
 como *simple request* para no disparar un preflight OPTIONS (que fallaría). Por eso
-`js-api.html` no fija `Content-Type` — al mandar un string como body, el navegador
-lo manda como `text/plain`, que está en la lista segura de CORS. Si en algún momento
+`api.js` no fija `Content-Type` — al mandar un string como body, el navegador lo
+manda como `text/plain`, que está en la lista segura de CORS. Si en algún momento
 alguien agrega headers custom al fetch, esto se rompe.
 
 ## Puesta en marcha
@@ -88,15 +72,14 @@ npm install -g @google/clasp
 clasp login
 ```
 
-Copiá `.clasp.json.example` a `.clasp.json` y poné el `scriptId` del proyecto (está
-en el editor de Apps Script, en *Configuración del proyecto*). `.clasp.json` está en
-`.gitignore` porque es específico de cada instalación.
-
-Antes del primer push conviene traer el manifiesto real del proyecto, para no pisar
-la configuración de despliegue que ya tenga:
+Creá un proyecto de Apps Script nuevo (o reutilizá uno existente), copiá
+`apps-script/.clasp.json.example` a `apps-script/.clasp.json` y poné el `scriptId`
+(está en el editor de Apps Script, en *Configuración del proyecto*).
+`apps-script/.clasp.json` está en `.gitignore` porque es específico de cada
+instalación.
 
 ```bash
-clasp pull
+cd apps-script
 clasp push
 ```
 
@@ -105,7 +88,7 @@ En *Configuración del proyecto → Propiedades del script*, cargar:
 | Propiedad         | Descripción                                                   |
 |-------------------|----------------------------------------------------------------|
 | `SPREADSHEET_ID`  | ID del Google Sheet. Se puede setear con `linkSpreadsheet()`  |
-| `DRIVE_FOLDER_ID` | Carpeta de Drive donde se guardan las fotos                   |
+| `DRIVE_FOLDER_ID` | Carpeta de Drive donde se guardan las fotos (se crea sola si falta) |
 | `OPENAI_API_KEY`  | API key de OpenAI para la extracción de datos                 |
 
 Publicá la Web App: *Implementar → Nueva implementación → Aplicación web*, acceso
@@ -114,38 +97,43 @@ siguiente paso.
 
 ### 2. Frontend (GitHub Pages)
 
-1. Pegá la URL `/exec` del paso anterior en `web/js-api.html`, reemplazando
+1. Pegá la URL `/exec` del paso anterior en `web/js/api.js`, reemplazando
    `PEGAR_AQUI_LA_URL_DE_IMPLEMENTACION/exec`.
 2. Commiteá y pusheá a `main`.
 3. En el repo de GitHub: *Settings → Pages → Build and deployment → Source:
    **GitHub Actions*** (paso único, manual — no se puede hacer por git push).
 4. El workflow `.github/workflows/deploy-pages.yml` corre en cada push a `main`
-   que toque `web/` o el script de build: genera `docs/index.html` y lo despliega.
-   La URL de Pages queda visible en la pestaña *Actions* del run, o en *Settings →
-   Pages*.
-
-Para probar localmente antes de pushear:
-
-```bash
-node scripts/build-pages.js
-```
-
-Esto genera `docs/index.html` (ignorado por git); abrilo directo en el navegador o
-serví la carpeta con cualquier servidor estático.
+   que toque `web/` y publica esa carpeta tal cual. La URL de Pages queda visible
+   en la pestaña *Actions* del run, o en *Settings → Pages*.
 
 **Importante:** cada vez que Apps Script genera una implementación *nueva* (no una
 versión de una implementación existente), la URL `/exec` cambia. Si eso pasa, hay
-que actualizar `web/js-api.html` y volver a pushear.
+que actualizar `web/js/api.js` y volver a pushear.
 
 ### Primer uso
 
 Al abrir la página por primera vez, si no hay usuarios cargados en la pestaña
 `Usuarios` aparece la pantalla de setup para crear el administrador inicial.
 
+## Escalar
+
+- **Más de una instalación / cliente:** cada una es un Apps Script propio (con su
+  `SPREADSHEET_ID`, `DRIVE_FOLDER_ID` y `OPENAI_API_KEY`) más su propia
+  implementación Web App. El mismo `web/` sirve para todas — solo cambia la
+  `API_URL` en `api.js`, así que conviene mantener un `api.js` por
+  despliegue de Pages si se necesita separar entornos (prod/staging).
+- **Límites de Apps Script:** cuotas diarias de `UrlFetchApp` (llamadas a OpenAI) y
+  tiempo de ejecución por request (6 min) son las restricciones típicas a vigilar
+  a medida que crece el volumen de pedidos.
+- **Sheets como base de datos:** cómodo y sin costo hasta unos pocos miles de filas
+  activas; por encima de eso, las lecturas completas de `getDataRange()` en
+  `getOrders`/`listClients` empiezan a pesar. Si se vuelve un cuello de botella, el
+  siguiente paso natural es migrar esas hojas a una base real (p. ej. Postgres)
+  detrás del mismo `doPost` whitelist, sin tocar el frontend.
+
 ## Notas
 
-- El código del cliente es ES5 (`var`, sin módulos) porque no hay build step de JS
-  (el único build es el aplanado de `web/` → `docs/`, que es texto plano).
+- El código del cliente es ES5 (`var`, sin módulos) porque no hay build step de JS.
 - Los IDs de registro son hex de 8 caracteres. La columna A de cada pestaña se
   formatea como texto (`@`) para que Sheets no los convierta a número o a notación
   científica.

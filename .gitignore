@@ -1,9 +1,5 @@
-.clasp.json
+apps-script/.clasp.json
 node_modules/
 .DS_Store
 Thumbs.db
 *.log
-
-# docs/ lo genera scripts/build-pages.js (en CI, en el workflow de Pages).
-# Se ignora para que un build local de prueba no se termine commiteando.
-docs/

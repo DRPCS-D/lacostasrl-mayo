@@ -6,8 +6,8 @@ const OPENAI_MODEL = 'gpt-4o';
 
 /**
  * Este proyecto ya no sirve la interfaz: el frontend vive en GitHub Pages
- * (carpeta web/ del repo, compilada a docs/) y le habla a este Web App
- * como API JSON vía doPost(). Ver Api.gs.
+ * (carpeta web/ del repo) y le habla a este Web App como API JSON vía
+ * doPost(). Ver Api.gs.
  */
 function doGet() {
   return ContentService.createTextOutput(
