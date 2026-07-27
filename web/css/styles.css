@@ -954,6 +954,10 @@
       box-shadow: 0 4px 20px rgba(0,0,0,0.25);
       transition: transform 0.3s ease, opacity 0.3s ease;
       opacity: 0; z-index: 999; max-width: calc(100vw - 32px); text-align: center;
+      /* Aunque esté oculto (opacity:0) sigue ocupando su caja, centrada sobre
+         el botón "Pedidos" de la barra de abajo, y su z-index alto le tapaba
+         los clics. No es interactivo, así que nunca debe capturar el mouse/touch. */
+      pointer-events: none;
     }
     #toast.show { transform: translateX(-50%) translateY(0); opacity: 1; }
     #toast.success { background: var(--success); }
