@@ -1552,6 +1552,9 @@
     if (sdrop.closest('#filters-panel-clientes')) {
       updateClienteFiltersCount();
       renderClientes();
+    } else if (sdrop.closest('#if-filters-panel')) {
+      updateInformeFiltersCount();
+      onInformeFilterChange();
     } else {
       updateFiltersCount();
       onFilterChange();
