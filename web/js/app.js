@@ -18,6 +18,7 @@
   // ── Users state ──
   var usersCache   = {};
   var editingUserId = null;
+  var viewingUserId = null;
   var pendingUserFoto = null; // { dataUrl, mime } tras elegir/comprimir una foto nueva
   var removeUserFotoFlag = false; // true = el usuario tocó "Quitar foto" al editar
 
@@ -2943,10 +2944,9 @@
     users.forEach(function(u) { usersCache[u.id] = u; });
     var tbody = document.getElementById('users-body');
     if (!users.length) {
-      tbody.innerHTML = '<tr><td colspan="5" class="empty-table">No hay usuarios registrados</td></tr>';
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-table">No hay usuarios registrados</td></tr>';
       return;
     }
-    var canManage = authRol === 'Admin';
     tbody.innerHTML = users.map(function(u) {
       var rolBadge = u.rol === 'Admin'
         ? '<span class="badge-admin">Admin</span>'
@@ -2957,21 +2957,59 @@
         ? '<span class="status-active">● Activo</span>'
         : '<span class="status-inactive">● Inactivo</span>';
       var isSelf = u.username === authUsername;
-      var editBtn = canManage
-        ? '<button class="btn-edit-row" onclick="openEditUserModal(\'' + esc(u.id) + '\')">Editar</button>'
-        : '';
-      var delBtn  = (canManage && !isSelf)
-        ? '<button class="btn-delete-row" onclick="confirmDeleteUser(\'' + esc(u.id) + '\',\'' + esc(u.username) + '\')">Eliminar</button>'
-        : '';
-      return '<tr>' +
+      var rid = esc(u.id);
+      return '<tr data-id="' + rid + '" tabindex="0" role="button" aria-label="Ver usuario" ' +
+        'onclick="openUserViewModal(\'' + rid + '\')" ' +
+        'onkeydown="if(event.key===\'Enter\'||event.key===\' \'){event.preventDefault();openUserViewModal(\'' + rid + '\');}">' +
         '<td style="font-weight:600"><span class="username-display">' + esc(u.username) + '</span>' + (isSelf ? ' <span style="font-size:0.7rem;color:var(--gray-400)">(vos)</span>' : '') + '</td>' +
         '<td>' + rolBadge + '</td>' +
         '<td>' + esc(u.fechaCreacion) + '</td>' +
         '<td>' + status + '</td>' +
-        '<td style="white-space:nowrap">' + editBtn + delBtn + '</td>' +
       '</tr>';
     }).join('');
   }
+
+  // ── Modal Ver Usuario ──
+  function openUserViewModal(id) {
+    var u = usersCache[id];
+    if (!u) return;
+    viewingUserId = id;
+    var canManage = authRol === 'Admin';
+    var isSelf = u.username === authUsername;
+    document.getElementById('uv-record-id').textContent = 'ID: ' + id;
+    document.getElementById('uv-username').textContent = u.username;
+    document.getElementById('uv-rol').textContent = u.rol === 'Admin' ? 'Admin' : (u.rol === 'AdminL' ? 'AdminL' : 'User');
+    document.getElementById('uv-estado').textContent = u.activo === 'true' ? 'Activo' : 'Inactivo';
+    document.getElementById('uv-fecha').textContent = u.fechaCreacion || '';
+    var foto = document.getElementById('uv-foto');
+    foto.innerHTML = u.fotoUrl ? '<img src="' + esc(u.fotoUrl) + '" alt="">' : esc((u.username || '?').charAt(0).toUpperCase());
+    document.getElementById('btn-uv-edit').style.display = canManage ? '' : 'none';
+    document.getElementById('btn-uv-delete').style.display = (canManage && !isSelf) ? '' : 'none';
+    document.getElementById('modal-view-user-overlay').classList.remove('hidden');
+  }
+
+  function closeUserViewModal() {
+    document.getElementById('modal-view-user-overlay').classList.add('hidden');
+    viewingUserId = null;
+  }
+
+  function switchUserViewToEdit() {
+    if (!viewingUserId) return;
+    var id = viewingUserId;
+    closeUserViewModal();
+    openEditUserModal(id);
+  }
+
+  function deleteCurrentUser() {
+    if (!viewingUserId) return;
+    var u = usersCache[viewingUserId];
+    if (!u) return;
+    confirmDeleteUser(viewingUserId, u.username);
+  }
+
+  document.getElementById('modal-view-user-overlay').addEventListener('mousedown', function(e) {
+    if (e.target === this) closeUserViewModal();
+  });
 
   function resetUserFotoPicker(initial, existingUrl) {
     pendingUserFoto = null;
@@ -3096,6 +3134,7 @@
     if (!confirm('¿Eliminar al usuario "' + username + '"?\nEsta acción no se puede deshacer.')) return;
     google.script.run
       .withSuccessHandler(function() {
+        closeUserViewModal();
         loadUsers();
         showToast('Usuario eliminado', 'success');
       })
