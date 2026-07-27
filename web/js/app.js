@@ -146,7 +146,7 @@
     document.getElementById('drawer-username').textContent = authUsername;
     document.getElementById('drawer-role').textContent = (authRol || '').toUpperCase();
     document.getElementById('drawer-avatar').textContent = (authUsername || '?').charAt(0).toUpperCase();
-    document.getElementById('home-username').textContent = authUsername;
+    document.getElementById('home-username').textContent = (authUsername || '').toUpperCase();
     // Admin items
     var isAdmin   = authRol === 'Admin';
     var isAdminL  = authRol === 'AdminL';
