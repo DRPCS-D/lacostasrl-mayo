@@ -527,7 +527,12 @@
     .btn-location:disabled { opacity: 0.6; cursor: not-allowed; }
     .map-link { color: var(--primary); font-weight: 600; text-decoration: underline; cursor: pointer; font-size: 0.82rem; }
     .map-link:hover { color: var(--primary-dark); }
-    #informes-map { border-radius: var(--radius); overflow: hidden; border: 1px solid var(--gray-200); }
+    #informes-map {
+      border-radius: var(--radius); overflow: hidden; border: 1px solid var(--gray-200);
+      /* Contiene el z-index interno de Leaflet (panes/controles llegan a 1000),
+         que si no, compite directo contra el drawer y los modales y les gana. */
+      position: relative; z-index: 0;
+    }
     .leaflet-popup-content { font-size: 0.82rem; line-height: 1.5; }
     .leaflet-popup-content b { color: var(--primary); }
     .form-group select {
