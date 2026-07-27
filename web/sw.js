@@ -4,12 +4,15 @@
 // Solo cachea los archivos propios de la app (mismo origen, GET). Las
 // llamadas a la API (POST a script.google.com) y los scripts de CDN
 // (pdf.js, heic2any) nunca se interceptan: necesitan ir siempre a la red.
-// Subir CACHE_NAME invalida el caché viejo en el próximo activate.
-const CACHE_NAME = 'pedidos-lacosta-v1';
+// El nombre del caché incluye APP_VERSION (js/version.js) — subir esa
+// versión invalida el caché viejo en el próximo activate.
+importScripts('./js/version.js');
+const CACHE_NAME = 'pedidos-lacosta-v' + APP_VERSION;
 const APP_SHELL = [
   './',
   './index.html',
   './css/styles.css',
+  './js/version.js',
   './js/api.js',
   './js/app.js',
   './manifest.json',

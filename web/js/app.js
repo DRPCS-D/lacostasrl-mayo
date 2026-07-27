@@ -151,6 +151,66 @@
     document.getElementById('drawer-overlay').classList.remove('open');
   }
 
+  // ── Versión / actualización de la app ──
+  // APP_VERSION viene de js/version.js (se carga antes que este archivo).
+  (function initVersionLabel() {
+    var el = document.getElementById('drawer-version');
+    if (el) el.textContent = 'v' + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : '?');
+  })();
+
+  // Si hay un service worker nuevo esperando (ya se bajó pero la pestaña
+  // sigue usando el viejo), muestra el badge "Nueva versión" en el drawer.
+  function showUpdateBadge() {
+    var badge = document.getElementById('drawer-update-badge');
+    if (badge) badge.style.display = '';
+  }
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.getRegistration().then(function(reg) {
+      if (!reg) return;
+      if (reg.waiting) showUpdateBadge();
+      reg.addEventListener('updatefound', function() {
+        var installing = reg.installing;
+        if (!installing) return;
+        installing.addEventListener('statechange', function() {
+          if (installing.state === 'installed' && navigator.serviceWorker.controller) {
+            showUpdateBadge();
+          }
+        });
+      });
+    }).catch(function() {});
+  }
+
+  // Botón "Actualizar app" del drawer: da vuelta el service worker y el
+  // caché del app shell, y fuerza una recarga desde la red — así nadie
+  // queda pegado con JS/CSS viejos aunque ya hayan instalado la PWA.
+  function forceUpdateApp(btnEl) {
+    if (btnEl) btnEl.setAttribute('disabled', 'true');
+    var label = document.getElementById('drawer-update-label');
+    if (label) label.textContent = 'Actualizando...';
+
+    var unregisterSw = ('serviceWorker' in navigator)
+      ? navigator.serviceWorker.getRegistrations().then(function(regs) {
+          return Promise.all(regs.map(function(r) { return r.unregister(); }));
+        })
+      : Promise.resolve();
+
+    unregisterSw
+      .catch(function() {})
+      .then(function() {
+        if (!window.caches) return;
+        return caches.keys().then(function(keys) {
+          return Promise.all(keys.map(function(k) { return caches.delete(k); }));
+        });
+      })
+      .catch(function() {})
+      .then(function() {
+        // cache-busting: evita que el navegador reuse una respuesta HTTP cacheada del index
+        var url = window.location.pathname + '?_v=' + Date.now();
+        window.location.replace(url);
+      });
+  }
+
   // ── Sections (navegación principal desde el drawer) ──
   var SECTIONS = ['pedidos', 'usuarios', 'clientes', 'reportes'];
   var currentSection = null;
