@@ -2,6 +2,7 @@
   var authToken    = null;
   var authUsername = null;
   var authRol      = null;
+  var authFotoUrl  = null;
 
   // ── Order state ──
   var currentBase64 = null;
@@ -96,6 +97,7 @@
     authToken    = localStorage.getItem('authToken');
     authUsername = localStorage.getItem('authUsername');
     authRol      = localStorage.getItem('authRol');
+    authFotoUrl  = localStorage.getItem('authFotoUrl');
 
     google.script.run
       .withSuccessHandler(function(usersExist) {
@@ -109,8 +111,10 @@
               if (sess) {
                 authUsername = sess.username;
                 authRol      = sess.rol;
+                authFotoUrl  = sess.fotoUrl || '';
                 localStorage.setItem('authUsername', authUsername);
                 localStorage.setItem('authRol', authRol);
+                localStorage.setItem('authFotoUrl', authFotoUrl);
                 launchApp();
               } else {
                 clearAuth();
@@ -142,11 +146,23 @@
     }
   }
 
+  // Muestra la foto de perfil del vendedor en el avatar del drawer si tiene
+  // una cargada (ver Usuarios); si no, o si la imagen falla, cae a la inicial.
+  function renderDrawerAvatar() {
+    var el = document.getElementById('drawer-avatar');
+    var initial = (authUsername || '?').charAt(0).toUpperCase();
+    if (authFotoUrl) {
+      el.innerHTML = '<img src="' + esc(authFotoUrl) + '" alt="" onerror="this.parentNode.textContent=\'' + esc(initial) + '\'">';
+    } else {
+      el.textContent = initial;
+    }
+  }
+
   function launchApp() {
     // Drawer user info
     document.getElementById('drawer-username').textContent = authUsername;
     document.getElementById('drawer-role').textContent = (authRol || '').toUpperCase();
-    document.getElementById('drawer-avatar').textContent = (authUsername || '?').charAt(0).toUpperCase();
+    renderDrawerAvatar();
     document.getElementById('home-username').textContent = (authUsername || '').toUpperCase();
     // Admin items
     var isAdmin   = authRol === 'Admin';
@@ -380,9 +396,11 @@
         authToken    = res.token;
         authUsername = res.username;
         authRol      = res.rol;
+        authFotoUrl  = res.fotoUrl || '';
         localStorage.setItem('authToken',    authToken);
         localStorage.setItem('authUsername', authUsername);
         localStorage.setItem('authRol',      authRol);
+        localStorage.setItem('authFotoUrl',  authFotoUrl);
         launchApp();
       })
       .withFailureHandler(function(err) {
@@ -421,10 +439,11 @@
   }
 
   function clearAuth() {
-    authToken = null; authUsername = null; authRol = null;
+    authToken = null; authUsername = null; authRol = null; authFotoUrl = null;
     localStorage.removeItem('authToken');
     localStorage.removeItem('authUsername');
     localStorage.removeItem('authRol');
+    localStorage.removeItem('authFotoUrl');
     resetAppState();
   }
 

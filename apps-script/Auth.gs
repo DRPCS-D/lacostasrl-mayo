@@ -40,12 +40,18 @@ function login(username, password) {
   if (!ss) throw new Error('Sistema no configurado.');
   var sheet = ss.getSheetByName(USERS_SHEET_NAME);
   if (!sheet || sheet.getLastRow() <= 1) throw new Error('No hay usuarios configurados.');
+  ensureUserFotoColumn(sheet);
 
   var data = sheet.getDataRange().getValues();
+  var fotoIdx = data[0].indexOf('FotoUrl');
   var user = null;
   for (var i = 1; i < data.length; i++) {
     if (String(data[i][1]).toLowerCase() === username) {
-      user = { id: String(data[i][0]), username: String(data[i][1]), hash: String(data[i][2]), rol: String(data[i][3]), activo: String(data[i][5]) };
+      user = {
+        id: String(data[i][0]), username: String(data[i][1]), hash: String(data[i][2]),
+        rol: String(data[i][3]), activo: String(data[i][5]),
+        fotoUrl: fotoIdx !== -1 ? String(data[i][fotoIdx] || '') : ''
+      };
       break;
     }
   }
@@ -57,10 +63,10 @@ function login(username, password) {
   var expires = new Date().getTime() + 4 * 60 * 60 * 1000;
   CacheService.getScriptCache().put(
     'sess_' + token,
-    JSON.stringify({ userId: user.id, username: user.username, rol: user.rol, expires: expires }),
+    JSON.stringify({ userId: user.id, username: user.username, rol: user.rol, fotoUrl: user.fotoUrl, expires: expires }),
     14400
   );
-  return { token: token, username: user.username, rol: user.rol };
+  return { token: token, username: user.username, rol: user.rol, fotoUrl: user.fotoUrl };
 }
 
 function logout(token) {
