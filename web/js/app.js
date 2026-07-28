@@ -4017,23 +4017,47 @@
   }
 
   // ── Mapa de visitas (Leaflet + OpenStreetMap) ──
+  // HTML del círculo avatar (foto del vendedor, o su inicial si no tiene) usado
+  // tanto por el marker individual como por el ícono de cluster.
+  function informeMarkerAvatarHtml(r) {
+    var username = String((r && r['Usuario']) || '');
+    var initial = esc((username.charAt(0) || '?').toUpperCase());
+    var foto = r && r['FotoUsuario'];
+    return foto
+      ? '<img src="' + esc(foto) + '" alt="" data-initial="' + initial + '" onerror="handleInformeMarkerImgError(this)">'
+      : '<span class="informe-marker-initial">' + initial + '</span>';
+  }
+
   // Ícono circular por vendedor: su foto de perfil si tiene, si no la inicial
   // de su usuario (mismo criterio de fallback que el avatar del drawer).
   function informeMarkerIcon(r) {
-    var username = String(r['Usuario'] || '');
-    var initial = esc((username.charAt(0) || '?').toUpperCase());
-    var foto = r['FotoUsuario'];
-    var inner = foto
-      ? '<img src="' + esc(foto) + '" alt="" data-initial="' + initial + '" onerror="handleInformeMarkerImgError(this)">'
-      : '<span class="informe-marker-initial">' + initial + '</span>';
     return L.divIcon({
-      html: '<div class="informe-marker">' + inner + '</div>',
+      html: '<div class="informe-marker">' + informeMarkerAvatarHtml(r) + '</div>',
       className: 'informe-marker-wrap',
       iconSize: [40, 48],
       iconAnchor: [20, 47],
       popupAnchor: [0, -44]
     });
   }
+
+  // Ícono de un cluster (varios informes agrupados por cercanía/zoom): misma
+  // foto circular que un marker individual (la del primer informe del grupo),
+  // con la cantidad de puntos agrupados en una insignia arriba a la derecha,
+  // como una notificación.
+  function informeClusterIcon(cluster) {
+    var children = cluster.getAllChildMarkers();
+    var rep = children[0] && children[0]._informeRow;
+    var count = cluster.getChildCount();
+    var badge = '<span class="informe-marker-badge">' + (count > 99 ? '99+' : count) + '</span>';
+    return L.divIcon({
+      html: '<div class="informe-marker">' + informeMarkerAvatarHtml(rep) + '</div>' + badge,
+      className: 'informe-marker-wrap',
+      iconSize: [40, 48],
+      iconAnchor: [20, 47],
+      popupAnchor: [0, -44]
+    });
+  }
+
   function handleInformeMarkerImgError(img) {
     var span = document.createElement('span');
     span.className = 'informe-marker-initial';
@@ -4055,7 +4079,7 @@
       // marcadores individuales al hacer zoom. Evita renderizar cientos de
       // puntos superpuestos de una vez (ver discusión de rendimiento).
       informesClusterGroup = (typeof L.markerClusterGroup === 'function')
-        ? L.markerClusterGroup({ maxClusterRadius: 60, spiderfyOnMaxZoom: true })
+        ? L.markerClusterGroup({ maxClusterRadius: 60, spiderfyOnMaxZoom: true, iconCreateFunction: informeClusterIcon })
         : L.layerGroup();
       informesClusterGroup.addTo(informesMap);
     }
@@ -4078,6 +4102,7 @@
       var marker = L.marker([lat, lng], { icon: informeMarkerIcon(r) }).bindPopup(popup);
       informesClusterGroup.addLayer(marker);
       marker._informeId = r['ID'];
+      marker._informeRow = r;
       informesMarkers.push(marker);
       if (pendingInformeMapFocusId && r['ID'] === pendingInformeMapFocusId) focusMarker = marker;
     });

@@ -576,7 +576,7 @@
     .leaflet-popup-content { font-size: 0.82rem; line-height: 1.5; }
     .leaflet-popup-content b { color: var(--primary); }
     /* Marcador circular con la foto del vendedor (o su inicial si no tiene) */
-    .informe-marker-wrap { background: transparent; border: none; }
+    .informe-marker-wrap { background: transparent; border: none; position: relative; }
     .informe-marker {
       width: 40px; height: 40px; border-radius: 50%;
       border: 3px solid var(--primary); background: var(--primary);
@@ -591,12 +591,17 @@
     }
     .informe-marker img { width: 100%; height: 100%; object-fit: cover; }
     .informe-marker-initial { color: var(--white); font-weight: 700; font-size: 1rem; }
-    /* Clusters de Leaflet.markercluster: círculo sólido con el conteo de visitas agrupadas */
-    .marker-cluster-small, .marker-cluster-medium, .marker-cluster-large {
-      background: rgba(138, 27, 26, 0.25);
-    }
-    .marker-cluster-small div, .marker-cluster-medium div, .marker-cluster-large div {
-      background: var(--primary); color: var(--white); font-weight: 700;
+    /* Insignia de cantidad en los clusters (varios informes agrupados), estilo
+       notificación arriba a la derecha del avatar. Va fuera de .informe-marker
+       (que tiene overflow:hidden para recortar la foto en círculo) para no
+       quedar recortada. */
+    .informe-marker-badge {
+      position: absolute; top: -4px; right: -4px;
+      min-width: 18px; height: 18px; padding: 0 4px;
+      background: var(--primary); color: var(--white);
+      border: 2px solid var(--white); border-radius: 10px;
+      font-size: 0.68rem; font-weight: 700; line-height: 14px;
+      text-align: center; box-shadow: 0 1px 3px rgba(0,0,0,0.3);
     }
     /* Selector de foto de perfil en el modal de Usuario */
     .user-photo-picker { display: flex; align-items: center; gap: 12px; margin-bottom: 14px; }

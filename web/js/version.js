@@ -3,4 +3,4 @@
 // Subir este número en cada release fuerza a los clientes con la PWA instalada
 // a bajar el service worker nuevo (y con el botón "Actualizar" del drawer,
 // a limpiar el caché viejo y recargar en el momento).
-var APP_VERSION = '31';
+var APP_VERSION = '32';
