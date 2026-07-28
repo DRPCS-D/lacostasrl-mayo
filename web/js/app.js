@@ -1901,8 +1901,7 @@
   function exportInformesToExcel() {
     var rows = getFilteredSortedInformes();
     if (!rows.length) { showToast('No hay registros para exportar', 'error'); return; }
-    var cols = ['Fecha', 'Cliente', 'Código Cliente', 'Ciudad', 'Zona', 'Comentario',
-                'Latitud', 'Longitud', 'Usuario'];
+    var cols = ['Fecha', 'Cliente', 'Código Cliente', 'Ciudad', 'Zona', 'Comentario', 'Usuario'];
     function csvCell(v) {
       var s = (v === null || v === undefined) ? '' : String(v);
       if (/[",;\r\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
