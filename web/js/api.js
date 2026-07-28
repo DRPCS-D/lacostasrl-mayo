@@ -18,7 +18,8 @@ var API_FUNCTIONS = [
   'listUsers', 'createUser', 'updateUser', 'deleteUser',
   'listClients', 'createClient', 'updateClient', 'getClientGlobalTotal', 'deleteClient',
   'processImage', 'uploadImageOnly', 'saveOrder', 'getOrders', 'updateOrder', 'deleteOrder',
-  'saveInforme', 'getInformes', 'updateInforme', 'deleteInforme'
+  'saveInforme', 'getInformes', 'updateInforme', 'deleteInforme',
+  'getRevisions'
 ];
 
 function apiRunner() {

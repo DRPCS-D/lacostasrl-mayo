@@ -29,6 +29,7 @@ function saveInforme(token, data) {
     sess.username
   ]);
   sheet.getRange(sheet.getLastRow(), 1).setValue(id);
+  bumpRevision('informes');
   return { success: true, id: id };
 }
 
@@ -88,6 +89,7 @@ function updateInforme(token, id, data) {
       if (zonIdx !== -1) sheet.getRange(row, zonIdx + 1).setValue(cli.zona || '');
       if (comIdx !== -1) sheet.getRange(row, comIdx + 1).setValue((data && data.comentario) || '');
       // La ubicación capturada no se edita: es el punto real donde ocurrió la visita.
+      bumpRevision('informes');
       return { success: true };
     }
   }
@@ -102,6 +104,7 @@ function deleteInforme(token, id) {
   for (var i = 1; i < values.length; i++) {
     if (String(values[i][0]) === String(id)) {
       sheet.deleteRow(i + 1);
+      bumpRevision('informes');
       return { success: true };
     }
   }

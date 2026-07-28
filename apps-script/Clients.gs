@@ -38,6 +38,7 @@ function createClient(token, data) {
     }
   }
   sheet.appendRow([codigo, razon, fant, ciudad, zona]);
+  bumpRevision('clients');
   return { success: true };
 }
 
@@ -63,6 +64,7 @@ function updateClient(token, originalCodigo, data) {
   for (var j = 1; j < rows.length; j++) {
     if (String(rows[j][0]).toLowerCase() === orig) {
       sheet.getRange(j + 1, 1, 1, 5).setValues([[codigo, razon, fant, ciudad, zona]]);
+      bumpRevision('clients');
       return { success: true };
     }
   }
@@ -104,6 +106,7 @@ function deleteClient(token, codigo) {
   for (var i = 1; i < rows.length; i++) {
     if (String(rows[i][0]).toLowerCase() === target) {
       sheet.deleteRow(i + 1);
+      bumpRevision('clients');
       return { success: true };
     }
   }

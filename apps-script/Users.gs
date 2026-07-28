@@ -60,6 +60,7 @@ function createUser(token, userData) {
   var fecha = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm');
   sheet.appendRow([id, username, hashPassword(password), rol, fecha, 'true', fotoUrl]);
   sheet.getRange(sheet.getLastRow(), 1).setValue(id);
+  bumpRevision('users');
   return { success: true };
 }
 
@@ -89,6 +90,7 @@ function updateUser(token, userId, userData) {
         }
         sheet.getRange(i + 1, fotoIdx + 1).setValue(fotoUrl);
       }
+      bumpRevision('users');
       return { success: true };
     }
   }
@@ -108,6 +110,7 @@ function deleteUser(token, userId) {
         throw new Error('No podés eliminar tu propia cuenta.');
       }
       sheet.deleteRow(i + 1);
+      bumpRevision('users');
       return { success: true };
     }
   }

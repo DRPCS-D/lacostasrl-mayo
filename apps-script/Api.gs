@@ -30,7 +30,8 @@ var API_WHITELIST = {
   saveInforme: saveInforme,
   getInformes: getInformes,
   updateInforme: updateInforme,
-  deleteInforme: deleteInforme
+  deleteInforme: deleteInforme,
+  getRevisions: getRevisions
 };
 
 function doPost(e) {

@@ -35,6 +35,7 @@ function saveOrder(token, data) {
     cliRecord.zona || ''
   ]);
   sheet.getRange(sheet.getLastRow(), 1).setValue(id);
+  bumpRevision('orders');
   return { success: true, id: id };
 }
 
@@ -152,6 +153,7 @@ function updateOrder(token, id, data) {
           }
         }
       }
+      bumpRevision('orders');
       return { success: true };
     }
   }
@@ -172,6 +174,7 @@ function deleteOrder(token, id) {
       if (imageFileId) {
         try { DriveApp.getFileById(imageFileId).setTrashed(true); } catch(e) {}
       }
+      bumpRevision('orders');
       return { success: true };
     }
   }

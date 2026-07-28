@@ -60,6 +60,26 @@
   var informeSortState = { column: null, direction: 'asc' };
   var INFORME_DATE_COLS = ['Fecha'];
 
+  // ── Caché local de tablas + sync en segundo plano (estilo AppSheet) ──
+  // Cada tabla completa se guarda en localStorage junto con la "revisión" del
+  // servidor con la que se corresponde (ver Sync.gs: bumpRevision/getRevisions
+  // en el backend). Al entrar a una sección se pinta primero lo que ya hay en
+  // memoria/caché (sin spinner) y se pregunta la revisión actual: si no cambió,
+  // no hace falta volver a pedir la tabla entera. Además, mientras la app está
+  // visible, un poll periódico repite esa pregunta para las 4 tablas y refresca
+  // en silencio la que el usuario tiene abierta si detecta cambios.
+  var knownRevisions = { orders: 0, informes: 0, clients: 0, users: 0 };
+  var haveTableCache = { orders: false, informes: false, clients: false, users: false };
+  var TABLE_CACHE_PREFIX = 'cache.';
+  var BG_SYNC_INTERVAL_MS = 90000;
+  var bgSyncTimerId = null;
+  var TABLE_PANEL_IDS = {
+    orders: ['panel-guardados'],
+    informes: ['panel-informes', 'panel-mapa'],
+    clients: ['panel-clientes'],
+    users: ['panel-usuarios']
+  };
+
   // ────────────────────────────────────────────
   // INIT
   // ────────────────────────────────────────────
@@ -182,11 +202,17 @@
     var btnNewCli  = document.getElementById('btn-new-cliente');
     if (btnNewCli)  btnNewCli.style.display  = isAdmin ? '' : 'none';
     showScreen('app');
+    // Traer del localStorage lo que haya quedado cacheado de esta sesión/dispositivo,
+    // para que la primera vez que se entra a cada sección ya haya algo pintado.
+    hydrateTableCaches();
     // Cargar clientes en cache (necesario para autocomplete — todos los usuarios)
     refreshClientsCache();
     // Precargar pedidos en cache (necesario para el chequeo de N° Orden duplicado
     // antes de que el usuario entre a la pestaña Pedidos)
     preloadRecordsCache();
+    // Detecta cambios hechos por otros vendedores/dispositivos mientras la app
+    // está abierta, sin que el usuario tenga que tocar "Actualizar".
+    startBackgroundSync();
     // Entrar a la pantalla de Inicio por defecto
     switchSection('inicio', { skipClose: true });
   }
@@ -445,6 +471,10 @@
     localStorage.removeItem('authUsername');
     localStorage.removeItem('authRol');
     localStorage.removeItem('authFotoUrl');
+    stopBackgroundSync();
+    // Borra las tablas cacheadas en localStorage: en un dispositivo compartido, sin esto
+    // el próximo usuario que entre vería por un instante datos del usuario anterior.
+    clearTableCaches();
     resetAppState();
   }
 
@@ -478,6 +508,8 @@
     informesCurrentPage = 1;
     informeSortState = { column: null, direction: 'asc' };
     informesCurrentTab = 'nuevo-informe';
+    knownRevisions = { orders: 0, informes: 0, clients: 0, users: 0 };
+    haveTableCache = { orders: false, informes: false, clients: false, users: false };
   }
 
   // Wraps failure handlers to catch session expiry
@@ -1279,21 +1311,190 @@
   }
 
   // ────────────────────────────────────────────
+  // CACHÉ DE TABLAS + SYNC EN SEGUNDO PLANO
+  // ────────────────────────────────────────────
+
+  function saveTableCache(key, data, rev) {
+    try {
+      localStorage.setItem(TABLE_CACHE_PREFIX + key, JSON.stringify({ data: data, rev: rev, savedAt: Date.now() }));
+    } catch (e) {
+      // Cuota de localStorage excedida u otro error: no rompe nada, solo no se cachea esta vez.
+    }
+  }
+
+  function loadTableCache(key) {
+    try {
+      var raw = localStorage.getItem(TABLE_CACHE_PREFIX + key);
+      if (!raw) return null;
+      var parsed = JSON.parse(raw);
+      if (!parsed || !Array.isArray(parsed.data)) return null;
+      return parsed;
+    } catch (e) {
+      return null;
+    }
+  }
+
+  function clearTableCaches() {
+    ['orders', 'informes', 'clients', 'users'].forEach(function(key) {
+      try { localStorage.removeItem(TABLE_CACHE_PREFIX + key); } catch (e) {}
+    });
+  }
+
+  // Hidrata allRecords/allInformes/allClients/allUsers (+ sus *Cache por id) desde
+  // localStorage al iniciar sesión, para que la primera vez que se entra a cada
+  // sección en esta sesión ya haya algo pintado sin esperar red.
+  function hydrateTableCaches() {
+    var o = loadTableCache('orders');
+    if (o) {
+      allRecords = o.data;
+      recordsCache = {};
+      allRecords.forEach(function(r) { if (r['ID']) recordsCache[r['ID']] = r; });
+      knownRevisions.orders = o.rev;
+      haveTableCache.orders = true;
+    }
+    var i = loadTableCache('informes');
+    if (i) {
+      allInformes = i.data;
+      informesCache = {};
+      allInformes.forEach(function(r) { if (r['ID']) informesCache[r['ID']] = r; });
+      knownRevisions.informes = i.rev;
+      haveTableCache.informes = true;
+    }
+    var c = loadTableCache('clients');
+    if (c) {
+      allClients = c.data;
+      knownRevisions.clients = c.rev;
+      haveTableCache.clients = true;
+    }
+    var u = loadTableCache('users');
+    if (u) {
+      allUsers = u.data;
+      usersCache = {};
+      allUsers.forEach(function(x) { if (x.id) usersCache[x.id] = x; });
+      knownRevisions.users = u.rev;
+      haveTableCache.users = true;
+    }
+  }
+
+  // Pregunta al backend la revisión actual de las 4 tablas (llamada barata: lee
+  // 4 enteros de PropertiesService, no escanea ninguna hoja) y, si la de `key`
+  // cambió respecto a lo que ya tenemos, llama fetchFullFn(rev) para traer la
+  // tabla completa. Si no cambió, no hace nada más — lo que ya está en memoria
+  // (y en pantalla) sigue siendo válido. Si la consulta de revisión falla y no
+  // había caché previo, igual dispara fetchFullFn para no dejar la pantalla vacía.
+  function syncTableIfStale(key, fetchFullFn) {
+    var hadCache = haveTableCache[key];
+    google.script.run
+      .withSuccessHandler(function(revs) {
+        var rev = revs && typeof revs[key] === 'number' ? revs[key] : null;
+        if (hadCache && rev !== null && rev === knownRevisions[key]) return; // sin cambios
+        fetchFullFn(rev);
+      })
+      .withFailureHandler(function() {
+        if (!hadCache) fetchFullFn(null);
+      })
+      .getRevisions(authToken);
+  }
+
+  function isAnyPanelActive(ids) {
+    return ids.some(function(id) {
+      var el = document.getElementById(id);
+      return el && el.classList.contains('active');
+    });
+  }
+
+  // Refresco de fondo para una tabla (llamado desde el poll periódico cuando
+  // getRevisions detecta un cambio). Siempre actualiza memoria + caché local;
+  // solo toca el DOM si la sección correspondiente está abierta en este momento,
+  // y sin resetear página/filtros (re-aplica los que ya estaban puestos).
+  function silentRefreshTable(key, rev) {
+    var visible = isAnyPanelActive(TABLE_PANEL_IDS[key]);
+    var fn = { orders: 'getOrders', informes: 'getInformes', clients: 'listClients', users: 'listUsers' }[key];
+    google.script.run
+      .withSuccessHandler(function(rows) {
+        rows = rows || [];
+        knownRevisions[key] = rev;
+        haveTableCache[key] = true;
+        saveTableCache(key, rows, rev);
+        if (key === 'orders') {
+          allRecords = rows;
+          recordsCache = {};
+          rows.forEach(function(r) { if (r['ID']) recordsCache[r['ID']] = r; });
+          if (visible) applyFilters();
+        } else if (key === 'informes') {
+          allInformes = rows;
+          informesCache = {};
+          rows.forEach(function(r) { if (r['ID']) informesCache[r['ID']] = r; });
+          if (visible) {
+            applyInformeFilters();
+            if (informesCurrentTab === 'mapa') renderInformesMap();
+          }
+        } else if (key === 'clients') {
+          allClients = rows;
+          if (visible) renderClientes();
+        } else if (key === 'users') {
+          allUsers = rows;
+          usersCache = {};
+          rows.forEach(function(u) { if (u.id) usersCache[u.id] = u; });
+          if (visible) renderUsers(filterUsersList());
+        }
+      })
+      .withFailureHandler(function() {}) // fallo silencioso: se reintenta en el próximo poll
+      [fn](authToken);
+  }
+
+  function backgroundSyncTick() {
+    if (document.visibilityState !== 'visible') return;
+    if (!authToken) return;
+    google.script.run
+      .withSuccessHandler(function(revs) {
+        if (!revs) return;
+        ['orders', 'informes', 'clients', 'users'].forEach(function(key) {
+          if (typeof revs[key] !== 'number') return;
+          if (revs[key] === knownRevisions[key]) return;
+          silentRefreshTable(key, revs[key]);
+        });
+      })
+      .withFailureHandler(function() {}) // fallo silencioso: se reintenta en el próximo tick
+      .getRevisions(authToken);
+  }
+
+  function startBackgroundSync() {
+    if (bgSyncTimerId) return;
+    bgSyncTimerId = setInterval(backgroundSyncTick, BG_SYNC_INTERVAL_MS);
+  }
+
+  function stopBackgroundSync() {
+    if (bgSyncTimerId) { clearInterval(bgSyncTimerId); bgSyncTimerId = null; }
+  }
+
+  // ────────────────────────────────────────────
   // RECORDS
   // ────────────────────────────────────────────
   function loadRecords() {
-    setTableLoading('panel-guardados', true);
-    google.script.run
-      .withSuccessHandler(function(rows) {
-        setTableLoading('panel-guardados', false);
-        renderRecords(rows || []);
-      })
-      .withFailureHandler(handleAuthError(function(err) {
-        setTableLoading('panel-guardados', false);
-        document.getElementById('records-body').innerHTML =
-          '<tr><td colspan="7" class="empty-table">Error al cargar: ' + (err ? err.message : 'desconocido') + '</td></tr>';
-      }))
-      .getOrders(authToken);
+    var hadCache = haveTableCache.orders;
+    if (hadCache) renderRecords(allRecords); // pinta ya lo que ya tenemos, sin esperar red
+    else setTableLoading('panel-guardados', true);
+    syncTableIfStale('orders', function(rev) {
+      if (hadCache) setTableLoading('panel-guardados', true);
+      google.script.run
+        .withSuccessHandler(function(rows) {
+          setTableLoading('panel-guardados', false);
+          rows = rows || [];
+          renderRecords(rows);
+          knownRevisions.orders = rev;
+          haveTableCache.orders = true;
+          saveTableCache('orders', rows, rev);
+        })
+        .withFailureHandler(handleAuthError(function(err) {
+          setTableLoading('panel-guardados', false);
+          if (!hadCache) {
+            document.getElementById('records-body').innerHTML =
+              '<tr><td colspan="7" class="empty-table">Error al cargar: ' + (err ? err.message : 'desconocido') + '</td></tr>';
+          }
+        }))
+        .getOrders(authToken);
+    });
   }
 
   // ── Pagination state ──
@@ -3006,21 +3207,31 @@
   // USERS MANAGEMENT (Admin only)
   // ────────────────────────────────────────────
   function loadUsers() {
-    setTableLoading('panel-usuarios', true);
-    google.script.run
-      .withSuccessHandler(function(users) {
-        setTableLoading('panel-usuarios', false);
-        allUsers = users || [];
-        usersCache = {};
-        allUsers.forEach(function(u) { usersCache[u.id] = u; });
-        renderUsers(filterUsersList());
-      })
-      .withFailureHandler(handleAuthError(function(err) {
-        setTableLoading('panel-usuarios', false);
-        document.getElementById('users-body').innerHTML =
-          '<tr><td colspan="5" class="empty-table">Error: ' + (err ? err.message : '') + '</td></tr>';
-      }))
-      .listUsers(authToken);
+    var hadCache = haveTableCache.users;
+    if (hadCache) renderUsers(filterUsersList()); // pinta ya lo que ya tenemos, sin esperar red
+    else setTableLoading('panel-usuarios', true);
+    syncTableIfStale('users', function(rev) {
+      if (hadCache) setTableLoading('panel-usuarios', true);
+      google.script.run
+        .withSuccessHandler(function(users) {
+          setTableLoading('panel-usuarios', false);
+          allUsers = users || [];
+          usersCache = {};
+          allUsers.forEach(function(u) { usersCache[u.id] = u; });
+          renderUsers(filterUsersList());
+          knownRevisions.users = rev;
+          haveTableCache.users = true;
+          saveTableCache('users', allUsers, rev);
+        })
+        .withFailureHandler(handleAuthError(function(err) {
+          setTableLoading('panel-usuarios', false);
+          if (!hadCache) {
+            document.getElementById('users-body').innerHTML =
+              '<tr><td colspan="5" class="empty-table">Error: ' + (err ? err.message : '') + '</td></tr>';
+          }
+        }))
+        .listUsers(authToken);
+    });
   }
 
   // Filtra allUsers por el texto del buscador (usuario)
@@ -3453,7 +3664,7 @@
     } else if (name === 'informes') {
       loadInformes();
     } else if (name === 'mapa') {
-      if (!allInformes.length) loadInformes(); // primera vez que se entra a Informes en esta sesión
+      loadInformes(); // pinta ya lo que haya en caché y chequea cambios en paralelo
       setTimeout(renderInformesMap, 0); // el contenedor recién queda visible ahora
     }
   }
@@ -3551,19 +3762,30 @@
 
   // ── Tabla de Informes ──
   function loadInformes() {
-    setTableLoading('panel-informes', true);
-    google.script.run
-      .withSuccessHandler(function(rows) {
-        setTableLoading('panel-informes', false);
-        renderInformes(rows || []);
-      })
-      .withFailureHandler(handleAuthError(function(err) {
-        setTableLoading('panel-informes', false);
-        var tbody = document.getElementById('informes-body');
-        if (tbody) tbody.innerHTML =
-          '<tr><td colspan="7" class="empty-table">Error al cargar: ' + (err ? err.message : 'desconocido') + '</td></tr>';
-      }))
-      .getInformes(authToken);
+    var hadCache = haveTableCache.informes;
+    if (hadCache) renderInformes(allInformes); // pinta ya lo que ya tenemos, sin esperar red
+    else setTableLoading('panel-informes', true);
+    syncTableIfStale('informes', function(rev) {
+      if (hadCache) setTableLoading('panel-informes', true);
+      google.script.run
+        .withSuccessHandler(function(rows) {
+          setTableLoading('panel-informes', false);
+          rows = rows || [];
+          renderInformes(rows);
+          knownRevisions.informes = rev;
+          haveTableCache.informes = true;
+          saveTableCache('informes', rows, rev);
+        })
+        .withFailureHandler(handleAuthError(function(err) {
+          setTableLoading('panel-informes', false);
+          if (!hadCache) {
+            var tbody = document.getElementById('informes-body');
+            if (tbody) tbody.innerHTML =
+              '<tr><td colspan="7" class="empty-table">Error al cargar: ' + (err ? err.message : 'desconocido') + '</td></tr>';
+          }
+        }))
+        .getInformes(authToken);
+    });
   }
 
   function renderInformes(rows) {
@@ -4040,22 +4262,38 @@
   // CLIENTES — Gestión (Admin only)
   // ────────────────────────────────────────────
   function loadClientes() {
-    setTableLoading('panel-clientes', true);
-    google.script.run
-      .withSuccessHandler(function(rows) {
-        setTableLoading('panel-clientes', false);
-        allClients = rows || [];
-        populateSelectFilter('filter-cliente-ciudad', allClients, 'ciudad', 'Todas las ciudades');
-        populateSelectFilter('filter-cliente-zona',   allClients, 'zona',   'Todas las zonas');
-        updateClienteFiltersCount();
-        renderClientes();
-      })
-      .withFailureHandler(handleAuthError(function(err) {
-        setTableLoading('panel-clientes', false);
-        document.getElementById('clientes-body').innerHTML =
-          '<tr><td colspan="4" class="empty-table">Error: ' + (err ? err.message : '') + '</td></tr>';
-      }))
-      .listClients(authToken);
+    var hadCache = haveTableCache.clients;
+    if (hadCache) {
+      populateSelectFilter('filter-cliente-ciudad', allClients, 'ciudad', 'Todas las ciudades');
+      populateSelectFilter('filter-cliente-zona',   allClients, 'zona',   'Todas las zonas');
+      updateClienteFiltersCount();
+      renderClientes();
+    } else {
+      setTableLoading('panel-clientes', true);
+    }
+    syncTableIfStale('clients', function(rev) {
+      if (hadCache) setTableLoading('panel-clientes', true);
+      google.script.run
+        .withSuccessHandler(function(rows) {
+          setTableLoading('panel-clientes', false);
+          allClients = rows || [];
+          populateSelectFilter('filter-cliente-ciudad', allClients, 'ciudad', 'Todas las ciudades');
+          populateSelectFilter('filter-cliente-zona',   allClients, 'zona',   'Todas las zonas');
+          updateClienteFiltersCount();
+          renderClientes();
+          knownRevisions.clients = rev;
+          haveTableCache.clients = true;
+          saveTableCache('clients', allClients, rev);
+        })
+        .withFailureHandler(handleAuthError(function(err) {
+          setTableLoading('panel-clientes', false);
+          if (!hadCache) {
+            document.getElementById('clientes-body').innerHTML =
+              '<tr><td colspan="4" class="empty-table">Error: ' + (err ? err.message : '') + '</td></tr>';
+          }
+        }))
+        .listClients(authToken);
+    });
   }
 
   // Filtra allClients por el buscador de texto + los sdrops de Ciudad/Zona. Compartido entre
