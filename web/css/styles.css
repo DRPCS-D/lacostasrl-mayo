@@ -1341,7 +1341,7 @@
       width: 100%; padding: 9px 12px;
     }
     .rep-section {
-      margin-top: 18px; padding: 16px;
+      margin-top: 18px; padding: 16px; min-width: 0;
       background: var(--white); border: 1px solid var(--gray-100); border-radius: 10px;
     }
     .rep-section-title {
@@ -1374,17 +1374,20 @@
       .reportes-grid .rep-section { margin-top: 0; }
     }
 
-    .rep-bars { display: flex; flex-direction: column; gap: 10px; }
-    .rep-bar-row { display: flex; flex-direction: column; gap: 4px; }
+    .rep-bars { display: flex; flex-direction: column; gap: 10px; min-width: 0; }
+    .rep-bar-row { display: flex; flex-direction: column; gap: 4px; min-width: 0; }
     .rep-bar-row-head {
       display: flex; justify-content: space-between; align-items: baseline; gap: 8px;
-      font-size: 0.82rem;
+      font-size: 0.82rem; flex-wrap: wrap;
     }
     .rep-bar-row-head .rep-bar-name {
-      color: var(--gray-800); font-weight: 600;
+      color: var(--gray-800); font-weight: 600; flex: 1 1 auto; min-width: 0;
       white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 70%;
     }
-    .rep-bar-row-head .rep-bar-val { color: var(--gray-500); font-variant-numeric: tabular-nums; font-size: 0.78rem; }
+    .rep-bar-row-head .rep-bar-val {
+      color: var(--gray-500); font-variant-numeric: tabular-nums; font-size: 0.78rem;
+      flex: 0 1 auto; min-width: 0; text-align: right; white-space: normal;
+    }
     .rep-bar-track {
       height: 8px; background: var(--gray-100); border-radius: 4px; overflow: hidden;
     }
