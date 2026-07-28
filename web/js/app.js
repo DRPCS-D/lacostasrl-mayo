@@ -1896,6 +1896,36 @@
     showToast('Exportados ' + rows.length + ' registros', 'success');
   }
 
+  // Exporta los informes de visitas filtrados/ordenados (misma logica que
+  // exportToExcel de Pedidos, pero con las columnas de Informes).
+  function exportInformesToExcel() {
+    var rows = getFilteredSortedInformes();
+    if (!rows.length) { showToast('No hay registros para exportar', 'error'); return; }
+    var cols = ['Fecha', 'Cliente', 'Código Cliente', 'Ciudad', 'Zona', 'Comentario',
+                'Latitud', 'Longitud', 'Usuario'];
+    function csvCell(v) {
+      var s = (v === null || v === undefined) ? '' : String(v);
+      if (/[",;\r\n]/.test(s)) s = '"' + s.replace(/"/g, '""') + '"';
+      return s;
+    }
+    var lines = [cols.map(csvCell).join(';')];
+    rows.forEach(function(r) {
+      lines.push(cols.map(function(c) { return csvCell(r[c]); }).join(';'));
+    });
+    var csv = '﻿' + lines.join('\r\n');
+    var blob = new Blob([csv], { type: 'text/csv;charset=utf-8;' });
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement('a');
+    var ts = new Date();
+    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+    var fname = 'informes_' + ts.getFullYear() + pad(ts.getMonth()+1) + pad(ts.getDate()) +
+                '_' + pad(ts.getHours()) + pad(ts.getMinutes()) + '.csv';
+    a.href = url; a.download = fname;
+    document.body.appendChild(a); a.click();
+    setTimeout(function() { document.body.removeChild(a); URL.revokeObjectURL(url); }, 100);
+    showToast('Exportados ' + rows.length + ' registros', 'success');
+  }
+
   function applyFilters() {
     saveFilterState();
     var filtered = getFilteredSortedRecords();
