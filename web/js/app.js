@@ -4040,17 +4040,34 @@
     });
   }
 
-  // Ícono de un cluster (varios informes agrupados por cercanía/zoom): misma
-  // foto circular que un marker individual (la del primer informe del grupo),
-  // con la cantidad de puntos agrupados en una insignia arriba a la derecha,
-  // como una notificación.
+  // Ícono "varias personas" para clusters con visitas de más de un vendedor
+  // (no tendría sentido mostrar la foto de uno solo si el grupo es mixto).
+  var INFORME_MULTI_USER_SVG =
+    '<svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="#fff" stroke-width="2" ' +
+    'stroke-linecap="round" stroke-linejoin="round">' +
+    '<path d="M17 21v-2a4 4 0 0 0-4-4H8a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/>' +
+    '<path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/>' +
+    '</svg>';
+
+  // Ícono de un cluster (varios informes agrupados por cercanía/zoom): si todos
+  // los puntos son del mismo vendedor, muestra su foto (como un marker
+  // individual); si el grupo mezcla vendedores distintos, muestra un ícono de
+  // "varias personas". La cantidad de puntos va en una insignia arriba a la
+  // derecha, como una notificación.
   function informeClusterIcon(cluster) {
     var children = cluster.getAllChildMarkers();
-    var rep = children[0] && children[0]._informeRow;
     var count = cluster.getChildCount();
+    var users = {};
+    children.forEach(function(m) {
+      var u = m._informeRow ? String(m._informeRow['Usuario'] || '').trim().toLowerCase() : '';
+      if (u) users[u] = true;
+    });
+    var avatarHtml = Object.keys(users).length > 1
+      ? INFORME_MULTI_USER_SVG
+      : informeMarkerAvatarHtml(children[0] && children[0]._informeRow);
     var badge = '<span class="informe-marker-badge">' + (count > 99 ? '99+' : count) + '</span>';
     return L.divIcon({
-      html: '<div class="informe-marker">' + informeMarkerAvatarHtml(rep) + '</div>' + badge,
+      html: '<div class="informe-marker">' + avatarHtml + '</div>' + badge,
       className: 'informe-marker-wrap',
       iconSize: [40, 48],
       iconAnchor: [20, 47],
@@ -4100,9 +4117,12 @@
         esc(r['Fecha']) + ' · ' + esc(r['Usuario']) + '<br>' +
         (r['Comentario'] ? esc(r['Comentario']) : '<i>Sin comentario</i>');
       var marker = L.marker([lat, lng], { icon: informeMarkerIcon(r) }).bindPopup(popup);
-      informesClusterGroup.addLayer(marker);
+      // Setear _informeId/_informeRow ANTES de addLayer: markercluster calcula
+      // el ícono del cluster (informeClusterIcon) en el mismo addLayer, así que
+      // si se setean después, el cluster ya se armó sin esos datos.
       marker._informeId = r['ID'];
       marker._informeRow = r;
+      informesClusterGroup.addLayer(marker);
       informesMarkers.push(marker);
       if (pendingInformeMapFocusId && r['ID'] === pendingInformeMapFocusId) focusMarker = marker;
     });
