@@ -2492,10 +2492,16 @@
     var maxAmount = Math.max.apply(null, buckets.map(function(b) { return b.amount; })) || 1;
     var maxCount  = Math.max.apply(null, buckets.map(function(b) { return b.count; }))  || 1;
 
-    // SVG geometry — viewBox crece si hay muchos meses para que las barras no se aplasten
+    // SVG geometry: si los meses entran en el ancho disponible, el gráfico
+    // ocupa exactamente ese ancho (sin scroll ni texto achicado). Si no
+    // entran (rango largo en pantalla angosta), el viewBox crece para que
+    // las barras no se aplasten y el contenedor scrollea horizontalmente.
     var N = buckets.length;
     var slotMin = 50;
-    var W = Math.max(700, 100 + slotMin * N);
+    var container = document.getElementById('rep-evolution');
+    var availW = (container && container.clientWidth) || 700;
+    var neededW = 100 + slotMin * N;
+    var W = Math.max(availW, neededW);
     var H = 240;
     var padL = 50, padR = 50, padT = 14, padB = 40;
     var innerW = W - padL - padR;
@@ -2503,7 +2509,8 @@
     var slotW = innerW / N;
     var barW = Math.min(28, slotW * 0.55);
 
-    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">';
+    var svg = '<svg viewBox="0 0 ' + W + ' ' + H + '" width="' + W + '" style="width:' + W + 'px" ' +
+      'preserveAspectRatio="xMidYMid meet" xmlns="http://www.w3.org/2000/svg">';
     // Grilla
     for (var g = 0; g <= 3; g++) {
       var ly = padT + (innerH / 3) * g;

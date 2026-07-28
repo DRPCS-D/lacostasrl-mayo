@@ -1354,7 +1354,10 @@
     .rep-leg-count  { background: #c79b9a; }
 
     .rep-chart-wrap { width: 100%; overflow-x: auto; }
-    .rep-chart-wrap svg { display: block; min-width: 600px; width: 100%; height: 240px; }
+    /* El ancho del svg lo fija app.js (renderRepEvolution) según el espacio
+       disponible: si los meses entran, ocupa el contenedor sin scroll; si no
+       entran, es más ancho que el contenedor y este scrollea horizontalmente. */
+    .rep-chart-wrap svg { display: block; height: 240px; }
     .rep-bar-amount { fill: var(--primary); }
     .rep-bar-amount:hover { fill: var(--primary-dark); }
     .rep-bar-count  { fill: #c79b9a; }
