@@ -1427,7 +1427,7 @@
           rows.forEach(function(r) { if (r['ID']) informesCache[r['ID']] = r; });
           if (visible) {
             applyInformeFilters();
-            if (informesCurrentTab === 'mapa') renderInformesMap();
+            if (informesCurrentTab === 'mapa') renderInformesMap(true); // no tocar el zoom/pan del usuario
           }
         } else if (key === 'clients') {
           allClients = rows;
@@ -3664,8 +3664,13 @@
     } else if (name === 'informes') {
       loadInformes();
     } else if (name === 'mapa') {
-      loadInformes(); // pinta ya lo que haya en caché y chequea cambios en paralelo
-      setTimeout(renderInformesMap, 0); // el contenedor recién queda visible ahora
+      // loadInformes() ya se encarga de llamar a renderInformesMap() (al toque si
+      // hay caché, o cuando llegue el fetch si no) — renderInformesMap() a su vez
+      // siempre difiere el invalidateSize() un tick, así que no hace falta un
+      // segundo render solo por el tamaño del contenedor. Un segundo render acá
+      // competía con el primero (p.ej. con la animación de zoomToShowLayer al
+      // venir de "Ver en mapa") y podía dejar el mapa en un estado raro.
+      loadInformes();
     }
   }
 
@@ -4082,7 +4087,10 @@
     img.parentNode.replaceChild(span, img);
   }
 
-  function renderInformesMap() {
+  // keepView=true: solo actualiza los markers, sin tocar el zoom/centro actual
+  // del mapa (usado por el refresco silencioso de fondo, para no interrumpir
+  // al usuario mientras está explorando el mapa a mano).
+  function renderInformesMap(keepView) {
     var container = document.getElementById('informes-map');
     if (!container || typeof L === 'undefined') return;
 
@@ -4127,13 +4135,19 @@
       if (pendingInformeMapFocusId && r['ID'] === pendingInformeMapFocusId) focusMarker = marker;
     });
 
-    if (focusMarker) {
-      // Viene de "Ver en mapa": mantiene el zoom en ese punto aunque este
-      // render se repita (p.ej. por un loadInformes() en segundo plano) hasta
-      // que el usuario cambie de filtro o entre a Mapa de otra forma.
+    // Se consume una sola vez: si queda pegado (no se limpia acá), cualquier
+    // render posterior —el segundo render inmediato al entrar, el poll de
+    // fondo, o simplemente volver a la pestaña más tarde— vuelve a saltar al
+    // mismo punto de siempre y le pisa al usuario cualquier zoom/pan manual
+    // que haya hecho después. Por eso se limpia apenas se usa.
+    if (focusMarker) pendingInformeMapFocusId = null;
+
+    if (keepView) {
+      // Refresco silencioso de fondo: no tocar la vista actual del usuario.
+    } else if (focusMarker) {
+      // Viene de "Ver en mapa": centra y hace zoom en ese punto.
       if (typeof informesClusterGroup.zoomToShowLayer === 'function') {
         informesClusterGroup.zoomToShowLayer(focusMarker, function() {
-          informesMap.setView(focusMarker.getLatLng(), 16);
           focusMarker.openPopup();
         });
       } else {
