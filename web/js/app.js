@@ -49,6 +49,7 @@
   var currentInformeLat = null;
   var currentInformeLng = null;
   var informesMap = null;       // instancia Leaflet, se crea una sola vez
+  var informesClusterGroup = null; // agrupa markers cercanos según el zoom, para rendir bien con muchos puntos
   var pendingInformeMapFocusId = null; // "Ver en mapa": ID a enfocar en el próximo render del mapa
   var informesMarkers = [];     // markers actuales del mapa
   var informesCurrentTab = 'nuevo-informe';
@@ -3749,9 +3750,16 @@
         maxZoom: 19,
         attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
       }).addTo(informesMap);
+      // Agrupa markers cercanos en un círculo con contador; solo se "abren" en
+      // marcadores individuales al hacer zoom. Evita renderizar cientos de
+      // puntos superpuestos de una vez (ver discusión de rendimiento).
+      informesClusterGroup = (typeof L.markerClusterGroup === 'function')
+        ? L.markerClusterGroup({ maxClusterRadius: 60, spiderfyOnMaxZoom: true })
+        : L.layerGroup();
+      informesClusterGroup.addTo(informesMap);
     }
 
-    informesMarkers.forEach(function(m) { informesMap.removeLayer(m); });
+    informesClusterGroup.clearLayers();
     informesMarkers = [];
 
     var rows = getFilteredSortedInformes().filter(function(r) {
@@ -3767,7 +3775,7 @@
         esc(r['Fecha']) + ' · ' + esc(r['Usuario']) + '<br>' +
         (r['Comentario'] ? esc(r['Comentario']) : '<i>Sin comentario</i>');
       var marker = L.marker([lat, lng], { icon: informeMarkerIcon(r) }).bindPopup(popup);
-      marker.addTo(informesMap);
+      informesClusterGroup.addLayer(marker);
       marker._informeId = r['ID'];
       informesMarkers.push(marker);
       if (pendingInformeMapFocusId && r['ID'] === pendingInformeMapFocusId) focusMarker = marker;
@@ -3777,8 +3785,15 @@
       // Viene de "Ver en mapa": mantiene el zoom en ese punto aunque este
       // render se repita (p.ej. por un loadInformes() en segundo plano) hasta
       // que el usuario cambie de filtro o entre a Mapa de otra forma.
-      informesMap.setView(focusMarker.getLatLng(), 16);
-      focusMarker.openPopup();
+      if (typeof informesClusterGroup.zoomToShowLayer === 'function') {
+        informesClusterGroup.zoomToShowLayer(focusMarker, function() {
+          informesMap.setView(focusMarker.getLatLng(), 16);
+          focusMarker.openPopup();
+        });
+      } else {
+        informesMap.setView(focusMarker.getLatLng(), 16);
+        focusMarker.openPopup();
+      }
     } else if (rows.length) {
       var bounds = L.latLngBounds(rows.map(function(r) { return [parseFloat(r['Latitud']), parseFloat(r['Longitud'])]; }));
       informesMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
