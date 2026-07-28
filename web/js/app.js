@@ -18,6 +18,7 @@
 
   // ── Users state ──
   var usersCache   = {};
+  var allUsers     = [];
   var editingUserId = null;
   var viewingUserId = null;
   var pendingUserFoto = null; // { dataUrl, mime } tras elegir/comprimir una foto nueva
@@ -454,6 +455,8 @@
   function resetAppState() {
     allRecords = [];
     recordsCache = {};
+    allUsers = [];
+    usersCache = {};
     allClients = [];
     clientesCache = {};
     editingClienteCodigo = null;
@@ -3007,7 +3010,10 @@
     google.script.run
       .withSuccessHandler(function(users) {
         setTableLoading('panel-usuarios', false);
-        renderUsers(users || []);
+        allUsers = users || [];
+        usersCache = {};
+        allUsers.forEach(function(u) { usersCache[u.id] = u; });
+        renderUsers(filterUsersList());
       })
       .withFailureHandler(handleAuthError(function(err) {
         setTableLoading('panel-usuarios', false);
@@ -3017,12 +3023,25 @@
       .listUsers(authToken);
   }
 
+  // Filtra allUsers por el texto del buscador (usuario)
+  function filterUsersList() {
+    var input = document.getElementById('search-users');
+    var q = input ? input.value.toLowerCase().trim() : '';
+    if (!q) return allUsers;
+    return allUsers.filter(function(u) {
+      return (u.username || '').toLowerCase().indexOf(q) !== -1;
+    });
+  }
+
+  function onUsersSearch() {
+    renderUsers(filterUsersList());
+  }
+
   function renderUsers(users) {
-    usersCache = {};
-    users.forEach(function(u) { usersCache[u.id] = u; });
     var tbody = document.getElementById('users-body');
     if (!users.length) {
-      tbody.innerHTML = '<tr><td colspan="4" class="empty-table">No hay usuarios registrados</td></tr>';
+      var msg = allUsers.length ? 'Sin resultados para la búsqueda' : 'No hay usuarios registrados';
+      tbody.innerHTML = '<tr><td colspan="4" class="empty-table">' + msg + '</td></tr>';
       return;
     }
     tbody.innerHTML = users.map(function(u) {
