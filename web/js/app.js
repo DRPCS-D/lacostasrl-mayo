@@ -1455,7 +1455,12 @@
   // derecha, como en el toolbar de Mapa) el panel se sale del viewport. Esto
   // lo re-ancla con un left explícito para que quede siempre visible.
   function keepFiltersPanelInViewport(panel) {
+    // Reset de left/right antes de medir: si una apertura anterior dejó
+    // right:auto puesto, la siguiente medición parte de un estado distinto
+    // al CSS original y da resultados inconsistentes (por eso alternaba
+    // bien/mal entre aperturas).
     panel.style.left = '';
+    panel.style.right = '';
     var margin = 12;
     var rect = panel.getBoundingClientRect();
     if (rect.left < margin) {
