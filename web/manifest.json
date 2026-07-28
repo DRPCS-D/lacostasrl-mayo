@@ -1,6 +1,6 @@
 {
-  "name": "LA COSTA S.R.L. - Pedidos",
-  "short_name": "Pedidos LC",
+  "name": "LA COSTA S.R.L. - Mayorista APP",
+  "short_name": "Mayorista APP",
   "description": "Carga de pedidos con extracción automática de datos, gestión de clientes y reportes.",
   "start_url": "./index.html",
   "scope": "./",
