@@ -265,16 +265,43 @@
     if (badge) badge.style.display = '';
   }
 
+  // Aviso visible (banner arriba de todo) de que hay una versión nueva. A
+  // diferencia del badge del drawer (que solo se ve si el usuario lo abre),
+  // este se muestra solo. checkForNewVersion() ya cubre el caso "esta pestaña
+  // arrancó con código viejo" con el modal bloqueante; esto cubre el caso más
+  // común en la práctica — el service worker instala la versión nueva DESPUÉS
+  // de que la app ya está cargada y en uso (self.skipWaiting() hace que quede
+  // activa casi al instante, sin pasar por un estado "waiting" visible).
+  function showUpdateBanner() {
+    showUpdateBadge();
+    var banner = document.getElementById('update-banner');
+    if (banner) banner.hidden = false;
+  }
+
+  function dismissUpdateBanner() {
+    var banner = document.getElementById('update-banner');
+    if (banner) banner.hidden = true;
+  }
+
   if ('serviceWorker' in navigator) {
+    // Si ya había un service worker controlando esta pestaña (no es el
+    // primer registro nunca) y en algún momento pasa a ser otro distinto,
+    // es una versión nueva que se activó sola durante la sesión.
+    var hadControllerAtLoad = !!navigator.serviceWorker.controller;
+    navigator.serviceWorker.addEventListener('controllerchange', function() {
+      if (hadControllerAtLoad) showUpdateBanner();
+      hadControllerAtLoad = true;
+    });
+
     navigator.serviceWorker.getRegistration().then(function(reg) {
       if (!reg) return;
-      if (reg.waiting) showUpdateBadge();
+      if (reg.waiting) showUpdateBanner();
       reg.addEventListener('updatefound', function() {
         var installing = reg.installing;
         if (!installing) return;
         installing.addEventListener('statechange', function() {
           if (installing.state === 'installed' && navigator.serviceWorker.controller) {
-            showUpdateBadge();
+            showUpdateBanner();
           }
         });
       });
