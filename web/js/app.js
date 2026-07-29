@@ -276,22 +276,39 @@
   // recargar), el registro del service worker desde cero DISPARA sus propias
   // señales de ciclo de vida (controllerchange / updatefound→installed) —
   // exactamente las mismas que usa este código para detectar "hay una
-  // versión nueva". Sin esto, la primera señal de esa reinstalación se
-  // interpreta como si hubiese otra versión más, y el banner reaparece solo
-  // apenas termina de recargar. La bandera dura una sola señal: cualquier
-  // detección genuina posterior en la misma sesión se avisa normalmente.
-  var suppressNextUpdateNotice = false;
-  try { suppressNextUpdateNotice = sessionStorage.getItem('appUpdateJustApplied') === '1'; } catch (e) {}
-  try { sessionStorage.removeItem('appUpdateJustApplied'); } catch (e) {}
+  // versión nueva". Sin esto, esas señales de la propia reinstalación se
+  // interpretan como si hubiese otra versión más, y el banner reaparece solo
+  // apenas termina de recargar. forceUpdateApp() ya agrega "?_v=..." a la URL
+  // de recarga (para evitar caché HTTP del index) — se reusa esa misma marca
+  // para detectar "esta carga es la que sigue a un forceUpdateApp", en vez de
+  // depender de que el código que disparó el reload (que podría ser una
+  // versión vieja de este mismo archivo, todavía no reemplazada) sepa avisar
+  // de otra forma. Se limpia de la URL enseguida para no seguir suprimiendo
+  // avisos genuinos en un F5 posterior. La supresión dura unos segundos (el
+  // tiempo que tarda el service worker recién registrado en instalar y
+  // activarse), no toda la sesión — si más tarde, con la pestaña ya abierta,
+  // se publica una versión realmente nueva, tiene que poder avisar igual.
+  var suppressUpdateNoticesUntil = 0;
+  if (/[?&]_v=/.test(location.search)) {
+    try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) {}
+    suppressUpdateNoticesUntil = Date.now() + 8000;
+  }
+  // Una vez que el usuario cierra el banner con la X, no lo repetimos más en
+  // esta sesión aunque otra señal de ciclo de vida del SW (hay varias, para
+  // distintos escenarios) dispare para ese mismo evento — evita que el
+  // banner "no se cierre" por una segunda señal llegando justo después del
+  // clic en la X.
+  var bannerDismissedByUser = false;
 
   function showUpdateBanner() {
-    if (suppressNextUpdateNotice) { suppressNextUpdateNotice = false; return; }
+    if (Date.now() < suppressUpdateNoticesUntil || bannerDismissedByUser) return;
     showUpdateBadge();
     var banner = document.getElementById('update-banner');
     if (banner) banner.hidden = false;
   }
 
   function dismissUpdateBanner() {
+    bannerDismissedByUser = true;
     var banner = document.getElementById('update-banner');
     if (banner) banner.hidden = true;
   }
@@ -349,11 +366,9 @@
       })
       .catch(function() {})
       .then(function() {
-        // Ver comentario junto a suppressNextUpdateNotice: sin esto, la propia
-        // reinstalación del service worker que sigue a este reload dispara el
-        // banner de "hay una versión nueva" de nuevo, apenas terminó de actualizar.
-        try { sessionStorage.setItem('appUpdateJustApplied', '1'); } catch (e) {}
-        // cache-busting: evita que el navegador reuse una respuesta HTTP cacheada del index
+        // El "?_v=" de acá abajo también es lo que usa suppressUpdateNoticesUntil
+        // (ver más arriba) para no mostrar el banner de nuevo apenas termina de
+        // actualizar — no solo cache-busting.
         var url = window.location.pathname + '?_v=' + Date.now();
         window.location.replace(url);
       });
