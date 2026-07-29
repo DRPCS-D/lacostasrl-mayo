@@ -985,35 +985,6 @@
     #toast.error   { background: var(--error); }
     #toast.warning { background: #f59e0b; color: #1f2937; }
 
-    /* ── Aviso de nueva versión (banner no bloqueante) ── */
-    /* A diferencia del #toast, este no se auto-oculta: el service worker puede
-       detectar una versión nueva en cualquier momento de la sesión (no solo al
-       cargar la app), así que el aviso queda visible hasta que el usuario
-       actualice o lo cierre. */
-    /* Abajo, como una notificación flotante — arriba tapaba el header y no
-       dejaba tocar el botón del menú lateral (hamburguesa). */
-    .update-banner {
-      position: fixed; left: 12px; right: 12px;
-      bottom: calc(12px + 58px + env(safe-area-inset-bottom, 0px));
-      max-width: 420px; margin: 0 auto;
-      padding: 10px 12px;
-      background: var(--primary); color: var(--white);
-      border-radius: 10px;
-      display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
-      font-size: 0.85rem; font-weight: 500;
-      z-index: 140; box-shadow: 0 4px 16px rgba(0,0,0,0.25);
-    }
-    .update-banner span { flex: 1 1 auto; min-width: 160px; }
-    .update-banner button {
-      border: none; border-radius: 6px; padding: 6px 12px; font-size: 0.82rem; font-weight: 600;
-      cursor: pointer; white-space: nowrap;
-    }
-    .update-banner button:not(.update-banner-close) { background: var(--white); color: var(--primary); }
-    .update-banner-close {
-      background: transparent; color: var(--white); font-size: 1.1rem; line-height: 1;
-      padding: 4px 6px;
-    }
-
     /* ── Modal ── */
     .modal-overlay {
       position: fixed; inset: 0; background: rgba(0,0,0,0.45);

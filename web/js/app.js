@@ -265,73 +265,16 @@
     if (badge) badge.style.display = '';
   }
 
-  // Aviso visible (banner arriba de todo) de que hay una versión nueva. A
-  // diferencia del badge del drawer (que solo se ve si el usuario lo abre),
-  // este se muestra solo. checkForNewVersion() ya cubre el caso "esta pestaña
-  // arrancó con código viejo" con el modal bloqueante; esto cubre el caso más
-  // común en la práctica — el service worker instala la versión nueva DESPUÉS
-  // de que la app ya está cargada y en uso (self.skipWaiting() hace que quede
-  // activa casi al instante, sin pasar por un estado "waiting" visible).
-  // Justo después de un forceUpdateApp() (unregister + limpiar cachés +
-  // recargar), el registro del service worker desde cero DISPARA sus propias
-  // señales de ciclo de vida (controllerchange / updatefound→installed) —
-  // exactamente las mismas que usa este código para detectar "hay una
-  // versión nueva". Sin esto, esas señales de la propia reinstalación se
-  // interpretan como si hubiese otra versión más, y el banner reaparece solo
-  // apenas termina de recargar. forceUpdateApp() ya agrega "?_v=..." a la URL
-  // de recarga (para evitar caché HTTP del index) — se reusa esa misma marca
-  // para detectar "esta carga es la que sigue a un forceUpdateApp", en vez de
-  // depender de que el código que disparó el reload (que podría ser una
-  // versión vieja de este mismo archivo, todavía no reemplazada) sepa avisar
-  // de otra forma. Se limpia de la URL enseguida para no seguir suprimiendo
-  // avisos genuinos en un F5 posterior. La supresión dura unos segundos (el
-  // tiempo que tarda el service worker recién registrado en instalar y
-  // activarse), no toda la sesión — si más tarde, con la pestaña ya abierta,
-  // se publica una versión realmente nueva, tiene que poder avisar igual.
-  var suppressUpdateNoticesUntil = 0;
-  if (/[?&]_v=/.test(location.search)) {
-    try { history.replaceState(null, '', location.pathname + location.hash); } catch (e) {}
-    suppressUpdateNoticesUntil = Date.now() + 8000;
-  }
-  // Una vez que el usuario cierra el banner con la X, no lo repetimos más en
-  // esta sesión aunque otra señal de ciclo de vida del SW (hay varias, para
-  // distintos escenarios) dispare para ese mismo evento — evita que el
-  // banner "no se cierre" por una segunda señal llegando justo después del
-  // clic en la X.
-  var bannerDismissedByUser = false;
-
-  function showUpdateBanner() {
-    if (Date.now() < suppressUpdateNoticesUntil || bannerDismissedByUser) return;
-    showUpdateBadge();
-    var banner = document.getElementById('update-banner');
-    if (banner) banner.hidden = false;
-  }
-
-  function dismissUpdateBanner() {
-    bannerDismissedByUser = true;
-    var banner = document.getElementById('update-banner');
-    if (banner) banner.hidden = true;
-  }
-
   if ('serviceWorker' in navigator) {
-    // Si ya había un service worker controlando esta pestaña (no es el
-    // primer registro nunca) y en algún momento pasa a ser otro distinto,
-    // es una versión nueva que se activó sola durante la sesión.
-    var hadControllerAtLoad = !!navigator.serviceWorker.controller;
-    navigator.serviceWorker.addEventListener('controllerchange', function() {
-      if (hadControllerAtLoad) showUpdateBanner();
-      hadControllerAtLoad = true;
-    });
-
     navigator.serviceWorker.getRegistration().then(function(reg) {
       if (!reg) return;
-      if (reg.waiting) showUpdateBanner();
+      if (reg.waiting) showUpdateBadge();
       reg.addEventListener('updatefound', function() {
         var installing = reg.installing;
         if (!installing) return;
         installing.addEventListener('statechange', function() {
           if (installing.state === 'installed' && navigator.serviceWorker.controller) {
-            showUpdateBanner();
+            showUpdateBadge();
           }
         });
       });
@@ -349,11 +292,6 @@
     var drawerLabel = document.getElementById('drawer-update-label');
     if (drawerLabel) drawerLabel.textContent = 'Actualizando...';
     if (btnEl && btnEl.id === 'update-required-btn') btnEl.textContent = 'Actualizando...';
-    // Ocultar ya mismo, sin esperar a ninguna detección: el usuario ya le dio
-    // "Actualizar", así que no tiene sentido que el aviso siga ahí mientras se
-    // procesa el reload (que puede tardar un momento, o fallar en detectar
-    // correctamente el eco de su propia reinstalación).
-    dismissUpdateBanner();
 
     var unregisterSw = ('serviceWorker' in navigator)
       ? navigator.serviceWorker.getRegistrations().then(function(regs) {
@@ -371,9 +309,6 @@
       })
       .catch(function() {})
       .then(function() {
-        // El "?_v=" de acá abajo también es lo que usa suppressUpdateNoticesUntil
-        // (ver más arriba) para no mostrar el banner de nuevo apenas termina de
-        // actualizar — no solo cache-busting.
         var url = window.location.pathname + '?_v=' + Date.now();
         window.location.replace(url);
       });

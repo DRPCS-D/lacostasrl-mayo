@@ -43,15 +43,6 @@
   <span class="loading-text">Cargando...</span>
 </div>
 
-<!-- Aviso no bloqueante: aparece solo si el service worker instala una versión
-     nueva DESPUÉS de que la app ya está cargada (no reemplaza al modal de
-     abajo, que bloquea si la versión ya está desactualizada desde el arranque) -->
-<div id="update-banner" class="update-banner" hidden>
-  <span>Hay una nueva versión de la app disponible.</span>
-  <button type="button" onclick="forceUpdateApp(this)">Actualizar ahora</button>
-  <button type="button" class="update-banner-close" onclick="dismissUpdateBanner()" aria-label="Cerrar">×</button>
-</div>
-
 <!-- Bloquea el uso de la app hasta actualizar, si detecta una versión nueva publicada -->
 <div class="modal-overlay" id="update-required-overlay" style="display:none;z-index:500">
   <div class="confirm-modal">
