@@ -396,24 +396,8 @@
               <input type="text" id="f-nroOrden" inputmode="numeric">
             </div>
             <div class="form-group">
-              <label>Fecha</label>
-              <input type="text" id="f-nroPedido" oninput="this.value=stripAccents(this.value)">
-            </div>
-            <div class="form-group">
-              <label>Entrega</label>
-              <input type="text" id="f-entrega" oninput="this.value=stripAccents(this.value)">
-            </div>
-            <div class="form-group">
               <label>Ciudad</label>
               <input type="text" id="f-ciudad" class="upper" readonly placeholder="Se completa al elegir el cliente">
-            </div>
-            <div class="form-group full">
-              <label>Dirección</label>
-              <input type="text" id="f-direccion" class="upper" oninput="this.value=stripAccents(this.value).toUpperCase()">
-            </div>
-            <div class="form-group">
-              <label>Forma de Pago</label>
-              <input type="text" id="f-formaPago" oninput="this.value=stripAccents(this.value)">
             </div>
             <div class="form-group">
               <label>Tipo <span style="color:var(--error)">*</span></label>
@@ -1164,12 +1148,8 @@
         <div class="form-group"><label>Cliente <span id="v-cliente-codigo-badge" style="display:none"></span></label><div class="view-field" id="v-cliente"></div></div>
         <div class="form-group"><label>Usuario</label><div class="view-field" id="v-usuario"></div></div>
         <div class="form-group"><label>N° Orden</label><div class="view-field" id="v-nroOrden"></div></div>
-        <div class="form-group"><label>Fecha</label><div class="view-field" id="v-nroPedido"></div></div>
-        <div class="form-group"><label>Entrega</label><div class="view-field" id="v-entrega"></div></div>
         <div class="form-group"><label>Ciudad</label><div class="view-field" id="v-ciudad"></div></div>
         <div class="form-group"><label>Zona</label><div class="view-field" id="v-zona"></div></div>
-        <div class="form-group" style="grid-column:1/-1"><label>Dirección</label><div class="view-field" id="v-direccion"></div></div>
-        <div class="form-group"><label>Forma de Pago</label><div class="view-field" id="v-formaPago"></div></div>
         <div class="form-group"><label>Tipo</label><div class="view-field" id="v-tipo"></div></div>
         <div class="form-group"><label>Marca</label><div class="view-field" id="v-marca"></div></div>
         <div class="form-group"><label>Total Pares</label><div class="view-field" id="v-totalPares"></div></div>
@@ -1273,11 +1253,7 @@
         <div id="e-cliente-suggestions" class="autocomplete-list" style="display:none"></div>
       </div>
       <div class="form-group"><label>N° Orden <span style="color:var(--error)">*</span></label><input type="text" id="e-nroOrden" inputmode="numeric"></div>
-      <div class="form-group"><label>Fecha</label><input type="text" id="e-nroPedido" oninput="this.value=stripAccents(this.value)"></div>
-      <div class="form-group"><label>Entrega</label><input type="text" id="e-entrega" oninput="this.value=stripAccents(this.value)"></div>
       <div class="form-group"><label>Ciudad</label><input type="text" id="e-ciudad" class="upper" readonly placeholder="Se completa al elegir el cliente"></div>
-      <div class="form-group" style="grid-column:1/-1"><label>Dirección</label><input type="text" id="e-direccion" class="upper" oninput="this.value=stripAccents(this.value).toUpperCase()"></div>
-      <div class="form-group"><label>Forma de Pago</label><input type="text" id="e-formaPago" oninput="this.value=stripAccents(this.value)"></div>
       <div class="form-group"><label>Tipo <span style="color:var(--error)">*</span></label><select id="e-tipo"><option value=""></option><option value="SHOW ROOM">SHOW ROOM</option><option value="STOCK">STOCK</option><option value="MALETEO">MALETEO</option></select></div>
       <div class="form-group"><label>Marca <span style="color:var(--error)">*</span></label><input type="text" id="e-marca" class="upper" oninput="this.value=normalizeMarca(this.value)"></div>
       <div class="form-group"><label>Total Pares <span style="color:var(--error)">*</span></label><input type="text" id="e-totalPares" inputmode="numeric"></div>

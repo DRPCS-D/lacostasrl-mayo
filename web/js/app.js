@@ -1150,7 +1150,7 @@
   }
 
   function fillForm(data) {
-    ['cliente','nroPedido','entrega','direccion','formaPago','nroOrden','marca','totalPares','totalPrecio','obs']
+    ['cliente','nroOrden','marca','totalPares','totalPrecio','obs']
       .forEach(function(f) {
         var el = document.getElementById('f-' + f);
         if (el && data[f] !== undefined) {
@@ -1179,13 +1179,12 @@
   // SAVE ORDER
   // ────────────────────────────────────────────
   function saveOrder() {
+    // nroPedido/entrega/direccion/formaPago: campos dados de baja del
+    // formulario de carga y de la extracción por IA (siguen existiendo como
+    // columnas en el sheet por si se quieren retomar más adelante).
     var data = {
       cliente:       val('f-cliente'),
-      nroPedido:     stripAccents(val('f-nroPedido')),
-      entrega:       stripAccents(val('f-entrega')),
-      direccion:     stripAccents(val('f-direccion')),
       ciudad:        val('f-ciudad'),
-      formaPago:     stripAccents(val('f-formaPago')),
       tipo:          val('f-tipo'),
       nroOrden:      val('f-nroOrden'),
       marca:         stripAccents(val('f-marca')),
@@ -2320,12 +2319,8 @@
     document.getElementById('v-cliente').textContent     = r['Cliente']     || '';
     document.getElementById('v-usuario').textContent     = r['Usuario']     || '';
     document.getElementById('v-nroOrden').textContent    = r['N° Orden']    || '';
-    document.getElementById('v-nroPedido').textContent   = r['N° Pedido']   || '';
-    document.getElementById('v-entrega').textContent     = r['Entrega']     || '';
     document.getElementById('v-ciudad').textContent      = r['Ciudad']      || '';
     document.getElementById('v-zona').textContent        = r['Zona']        || '';
-    document.getElementById('v-direccion').textContent   = r['Dirección']   || '';
-    document.getElementById('v-formaPago').textContent   = r['Forma Pago']  || '';
     document.getElementById('v-tipo').textContent        = r['Tipo']        || '';
     document.getElementById('v-marca').textContent       = r['Marca']       || '';
     document.getElementById('v-totalPares').textContent  = r['Total Pares'] || '';
@@ -2486,11 +2481,7 @@
       }
     }
     document.getElementById('e-nroOrden').value   = r['N° Orden']    || '';
-    document.getElementById('e-nroPedido').value  = stripAccents(r['N° Pedido'] || '');
-    document.getElementById('e-entrega').value    = stripAccents(r['Entrega']   || '');
     document.getElementById('e-ciudad').value     = String(r['Ciudad']    || '').toUpperCase();
-    document.getElementById('e-direccion').value  = stripAccents(r['Dirección'] || '').toUpperCase();
-    document.getElementById('e-formaPago').value  = stripAccents(r['Forma Pago'] || '');
     document.getElementById('e-tipo').value       = r['Tipo']        || '';
     document.getElementById('e-marca').value      = normalizeMarca(r['Marca']     || '');
     document.getElementById('e-totalPares').value = r['Total Pares'] || '';
@@ -2629,17 +2620,19 @@
     var btn = document.getElementById('btn-edit-save');
     btn.disabled = true; btn.textContent = 'Guardando...';
 
+    var editingRow = recordsCache[editingId] || {};
     var payload = {
       cliente:     eCliente,
-      // El campo RUC ya no se captura en la UI, pero preservamos el valor existente del registro
-      // (si lo hubiera) para no blanquearlo en pedidos viejos al editar.
-      ruc:         (recordsCache[editingId] && recordsCache[editingId]['RUC']) || '',
+      // RUC, N° Pedido, Entrega, Dirección y Forma de Pago ya no se capturan en la
+      // UI, pero preservamos el valor existente del registro (si lo hubiera) para
+      // no blanquearlo en pedidos viejos al editar por otro motivo.
+      ruc:         editingRow['RUC']         || '',
       nroOrden:    eOrden,
-      nroPedido:   stripAccents(document.getElementById('e-nroPedido').value.trim()),
-      entrega:     stripAccents(document.getElementById('e-entrega').value.trim()),
-      direccion:   stripAccents(document.getElementById('e-direccion').value.trim()),
+      nroPedido:   editingRow['N° Pedido']   || '',
+      entrega:     editingRow['Entrega']     || '',
+      direccion:   editingRow['Dirección']   || '',
       ciudad:      document.getElementById('e-ciudad').value.trim(),
-      formaPago:   stripAccents(document.getElementById('e-formaPago').value.trim()),
+      formaPago:   editingRow['Forma Pago']  || '',
       tipo:        eTipo,
       marca:       stripAccents(eMarca),
       totalPares:  ePares,
