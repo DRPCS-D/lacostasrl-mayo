@@ -349,6 +349,11 @@
     var drawerLabel = document.getElementById('drawer-update-label');
     if (drawerLabel) drawerLabel.textContent = 'Actualizando...';
     if (btnEl && btnEl.id === 'update-required-btn') btnEl.textContent = 'Actualizando...';
+    // Ocultar ya mismo, sin esperar a ninguna detección: el usuario ya le dio
+    // "Actualizar", así que no tiene sentido que el aviso siga ahí mientras se
+    // procesa el reload (que puede tardar un momento, o fallar en detectar
+    // correctamente el eco de su propia reinstalación).
+    dismissUpdateBanner();
 
     var unregisterSw = ('serviceWorker' in navigator)
       ? navigator.serviceWorker.getRegistrations().then(function(regs) {
