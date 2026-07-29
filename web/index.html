@@ -209,7 +209,6 @@
           <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/>
         </svg>
         <span id="drawer-update-label">Actualizar app</span>
-        <span class="drawer-update-badge" id="drawer-update-badge" style="display:none">Nueva versión</span>
       </button>
       <div class="drawer-divider"></div>
       <button class="drawer-item danger" onclick="doLogout()">
@@ -1445,7 +1444,11 @@
 <script>
   if ('serviceWorker' in navigator) {
     window.addEventListener('load', function() {
-      navigator.serviceWorker.register('sw.js').catch(function(err) {
+      navigator.serviceWorker.register('sw.js').then(function() {
+        // Recién ahora existe el registro: initAppAutoUpdate_() (app.js)
+        // puede preguntar por él sin la carrera de llegar antes de tiempo.
+        initAppAutoUpdate_();
+      }).catch(function(err) {
         console.warn('No se pudo registrar el service worker:', err);
       });
     });

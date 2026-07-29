@@ -4,10 +4,18 @@
 // Solo cachea los archivos propios de la app (mismo origen, GET). Las
 // llamadas a la API (POST a script.google.com) y los scripts de CDN
 // (pdf.js, heic2any) nunca se interceptan: necesitan ir siempre a la red.
-// El nombre del caché incluye APP_VERSION (js/version.js) — subir esa
-// versión invalida el caché viejo en el próximo activate.
-importScripts('./js/version.js');
-const CACHE_NAME = 'pedidos-lacosta-v' + APP_VERSION;
+//
+// CACHE_VERSION vive ACÁ como literal (no en un archivo aparte importado,
+// como estaba antes con js/version.js vía importScripts). El navegador
+// detecta de forma confiable cuándo ESTE archivo cambió de bytes para
+// decidir si hay que reinstalar el service worker; detectar cambios solo
+// en un script que este archivo importa es mucho menos confiable — así se
+// veían actualizaciones que tardaban en notarse o directamente no se
+// notaban. Subir este número en cada deploy (igual que APP_VERSION en
+// js/version.js — son dos números independientes, no hace falta que
+// coincidan, pero conviene subir los dos juntos para no confundirse).
+const CACHE_VERSION = 'v46';
+const CACHE_NAME = 'pedidos-lacosta-' + CACHE_VERSION;
 const APP_SHELL = [
   './',
   './index.html',
@@ -58,4 +66,13 @@ self.addEventListener('fetch', function(event) {
       return cached || fetchPromise;
     })
   );
+});
+
+// La página, al detectar que este SW nuevo quedó "installed" con el viejo
+// todavía controlando, le pide que se active de una — ver activateNewSwAndReload_
+// en app.js. (skipWaiting() ya se llama solo en 'install' arriba; esto es un
+// empujón explícito para el flujo de recarga controlada, no estrictamente
+// necesario pero no hace daño tenerlo.)
+self.addEventListener('message', function(event) {
+  if (event.data === 'SKIP_WAITING') self.skipWaiting();
 });

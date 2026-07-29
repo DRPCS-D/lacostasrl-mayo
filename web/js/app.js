@@ -258,27 +258,97 @@
     if (el) el.textContent = 'v' + (typeof APP_VERSION !== 'undefined' ? APP_VERSION : '?');
   })();
 
-  // Si hay un service worker nuevo esperando (ya se bajó pero la pestaña
-  // sigue usando el viejo), muestra el badge "Nueva versión" en el drawer.
-  function showUpdateBadge() {
-    var badge = document.getElementById('drawer-update-badge');
-    if (badge) badge.style.display = '';
+  // ── Auto-actualización en segundo plano ──
+  // Política: cuando el service worker instala una versión nueva, no se
+  // interrumpe al usuario de entrada. Se aplica sola, en silencio, en el
+  // primer momento seguro: cuando vuelve a esta pestaña/PWA después de haber
+  // estado en otro lado (visibilitychange) y no está en medio de algo (sin
+  // modales/paneles abiertos, sin estar escribiendo en un campo). Si eso
+  // nunca pasa (se queda con la pestaña abierta y activa todo el tiempo), se
+  // muestra el modal bloqueante de "Hay una versión nueva" — el mismo que ya
+  // usa checkForNewVersion() para el caso de arranque con código viejo.
+  var _newSwWaiting = null;
+  var SW_CHECK_MS = 30 * 60 * 1000; // reg.update() cada 30 min, además del chequeo automático del navegador
+  var _swReloadInProgress = false;
+
+  // ¿Hay algo abierto/en curso que no conviene interrumpir con una recarga?
+  function isAppBusy_() {
+    // .hidden es la convención de la mayoría de los modal-overlay, pero
+    // update-required-overlay (y algún otro viejo) togglea display por style
+    // en vez de esa clase — por eso se chequea el estilo calculado, no la
+    // clase, y se excluye el propio modal de actualización (que se abre
+    // recién cuando ESTE código decide mostrarlo, no algo que ya estaba ahí).
+    var overlays = document.querySelectorAll('.modal-overlay');
+    for (var i = 0; i < overlays.length; i++) {
+      if (overlays[i].id === 'update-required-overlay') continue;
+      if (getComputedStyle(overlays[i]).display !== 'none') return true;
+    }
+    var photoViewer = document.getElementById('photo-viewer-overlay');
+    if (photoViewer && photoViewer.classList.contains('open')) return true;
+    var repDrawer = document.getElementById('rep-export-drawer-overlay');
+    if (repDrawer && repDrawer.classList.contains('open')) return true;
+    var drawer = document.getElementById('drawer');
+    if (drawer && drawer.classList.contains('open')) return true;
+    if (document.querySelector('.filters-panel:not([hidden])')) return true;
+    var ae = document.activeElement;
+    if (ae && (ae.tagName === 'INPUT' || ae.tagName === 'TEXTAREA' || ae.tagName === 'SELECT')) return true;
+    return false;
   }
 
-  if ('serviceWorker' in navigator) {
+  function activateNewSwAndReload_() {
+    if (!_newSwWaiting || _swReloadInProgress) return;
+    _swReloadInProgress = true;
+    var sw = _newSwWaiting;
+    _newSwWaiting = null;
+    navigator.serviceWorker.addEventListener('controllerchange', function() {
+      if (_swReloadInProgress) { _swReloadInProgress = false; location.reload(); }
+    }, { once: true });
+    sw.postMessage('SKIP_WAITING');
+    // Fallback: si el controllerchange no llega en 4s (no debería tardar
+    // tanto), recargamos igual — mejor eso que quedar pegado esperando.
+    setTimeout(function() {
+      if (_swReloadInProgress) { _swReloadInProgress = false; location.reload(); }
+    }, 4000);
+  }
+
+  // Se llama recién después de que navigator.serviceWorker.register() ya
+  // resolvió (ver index.html) — evita preguntar por el registro antes de
+  // que exista.
+  function initAppAutoUpdate_() {
+    if (!('serviceWorker' in navigator)) return;
+
     navigator.serviceWorker.getRegistration().then(function(reg) {
       if (!reg) return;
-      if (reg.waiting) showUpdateBadge();
+
+      // Caso: el deploy nuevo ya estaba publicado antes de que abrieran la app.
+      if (reg.waiting && navigator.serviceWorker.controller) {
+        _newSwWaiting = reg.waiting;
+        showUpdateRequiredModal();
+      }
+
+      // Detección en vivo, con la pestaña ya abierta.
       reg.addEventListener('updatefound', function() {
-        var installing = reg.installing;
-        if (!installing) return;
-        installing.addEventListener('statechange', function() {
-          if (installing.state === 'installed' && navigator.serviceWorker.controller) {
-            showUpdateBadge();
+        var inst = reg.installing;
+        if (!inst) return;
+        inst.addEventListener('statechange', function() {
+          if (inst.state === 'installed' && navigator.serviceWorker.controller) {
+            _newSwWaiting = inst;
+            showUpdateRequiredModal();
           }
         });
       });
+
+      setInterval(function() { reg.update().catch(function() {}); }, SW_CHECK_MS);
     }).catch(function() {});
+
+    // Al volver a la app (cambió de pestaña/app y volvió) es un momento
+    // seguro para recargar sin que se note — el usuario ya se está por
+    // reencontrar con la pantalla de todos modos.
+    document.addEventListener('visibilitychange', function() {
+      if (document.visibilityState === 'visible' && _newSwWaiting && !isAppBusy_()) {
+        activateNewSwAndReload_();
+      }
+    });
   }
 
   // Botón "Actualizar app" del drawer: da vuelta el service worker y el
