@@ -1382,16 +1382,16 @@
   // tabla completa. Si no cambió, no hace nada más — lo que ya está en memoria
   // (y en pantalla) sigue siendo válido. Si la consulta de revisión falla y no
   // había caché previo, igual dispara fetchFullFn para no dejar la pantalla vacía.
-  function syncTableIfStale(key, fetchFullFn) {
+  function syncTableIfStale(key, fetchFullFn, force) {
     var hadCache = haveTableCache[key];
     google.script.run
       .withSuccessHandler(function(revs) {
         var rev = revs && typeof revs[key] === 'number' ? revs[key] : null;
-        if (hadCache && rev !== null && rev === knownRevisions[key]) return; // sin cambios
+        if (!force && hadCache && rev !== null && rev === knownRevisions[key]) return; // sin cambios
         fetchFullFn(rev);
       })
       .withFailureHandler(function() {
-        if (!hadCache) fetchFullFn(null);
+        if (!hadCache || force) fetchFullFn(null);
       })
       .getRevisions(authToken);
   }
@@ -1471,12 +1471,15 @@
   // ────────────────────────────────────────────
   // RECORDS
   // ────────────────────────────────────────────
-  function loadRecords() {
+  // force=true : botón "Actualizar" — ignora la comparación de revisión y
+  // siempre trae la tabla completa del backend (por si getRevisions quedó
+  // desincronizado, o simplemente para que el usuario tenga forma de forzarlo).
+  function loadRecords(force) {
     var hadCache = haveTableCache.orders;
-    if (hadCache) renderRecords(allRecords); // pinta ya lo que ya tenemos, sin esperar red
-    else setTableLoading('panel-guardados', true);
+    if (hadCache && !force) renderRecords(allRecords); // pinta ya lo que ya tenemos, sin esperar red
+    if (!hadCache || force) setTableLoading('panel-guardados', true);
     syncTableIfStale('orders', function(rev) {
-      if (hadCache) setTableLoading('panel-guardados', true);
+      if (hadCache && !force) setTableLoading('panel-guardados', true);
       google.script.run
         .withSuccessHandler(function(rows) {
           setTableLoading('panel-guardados', false);
@@ -1494,7 +1497,7 @@
           }
         }))
         .getOrders(authToken);
-    });
+    }, force);
   }
 
   // ── Pagination state ──
@@ -3766,12 +3769,14 @@
   }
 
   // ── Tabla de Informes ──
-  function loadInformes() {
+  // force=true : botón "Actualizar" — ignora la comparación de revisión y
+  // siempre trae la tabla completa del backend.
+  function loadInformes(force) {
     var hadCache = haveTableCache.informes;
-    if (hadCache) renderInformes(allInformes); // pinta ya lo que ya tenemos, sin esperar red
-    else setTableLoading('panel-informes', true);
+    if (hadCache && !force) renderInformes(allInformes); // pinta ya lo que ya tenemos, sin esperar red
+    if (!hadCache || force) setTableLoading('panel-informes', true);
     syncTableIfStale('informes', function(rev) {
-      if (hadCache) setTableLoading('panel-informes', true);
+      if (hadCache && !force) setTableLoading('panel-informes', true);
       google.script.run
         .withSuccessHandler(function(rows) {
           setTableLoading('panel-informes', false);
@@ -3790,7 +3795,7 @@
           }
         }))
         .getInformes(authToken);
-    });
+    }, force);
   }
 
   function renderInformes(rows) {
