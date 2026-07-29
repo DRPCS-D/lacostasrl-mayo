@@ -3843,14 +3843,19 @@
   // force=true : botón "Actualizar" — ignora la comparación de revisión y
   // siempre trae la tabla completa del backend.
   function loadInformes(force) {
+    // Informes y Mapa son dos tab-panel distintos que comparten los mismos
+    // datos y el mismo botón "Actualizar" — el spinner tiene que ir en el
+    // que esté visible en este momento, si no, se agrega a un panel oculto
+    // y no se ve (aunque se esté cargando igual).
+    var loadingPanel = informesCurrentTab === 'mapa' ? 'panel-mapa' : 'panel-informes';
     var hadCache = haveTableCache.informes;
     if (hadCache && !force) renderInformes(allInformes); // pinta ya lo que ya tenemos, sin esperar red
-    if (!hadCache || force) setTableLoading('panel-informes', true);
+    if (!hadCache || force) setTableLoading(loadingPanel, true);
     syncTableIfStale('informes', function(rev) {
-      if (hadCache && !force) setTableLoading('panel-informes', true);
+      if (hadCache && !force) setTableLoading(loadingPanel, true);
       google.script.run
         .withSuccessHandler(function(rows) {
-          setTableLoading('panel-informes', false);
+          setTableLoading(loadingPanel, false);
           rows = rows || [];
           renderInformes(rows);
           knownRevisions.informes = rev;
@@ -3858,7 +3863,7 @@
           saveTableCache('informes', rows, rev);
         })
         .withFailureHandler(handleAuthError(function(err) {
-          setTableLoading('panel-informes', false);
+          setTableLoading(loadingPanel, false);
           if (!hadCache) {
             var tbody = document.getElementById('informes-body');
             if (tbody) tbody.innerHTML =
