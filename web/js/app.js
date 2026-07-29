@@ -3278,12 +3278,14 @@
   // ────────────────────────────────────────────
   // USERS MANAGEMENT (Admin only)
   // ────────────────────────────────────────────
-  function loadUsers() {
+  // force=true : botón "Actualizar" — ignora la comparación de revisión y
+  // siempre trae la tabla completa del backend.
+  function loadUsers(force) {
     var hadCache = haveTableCache.users;
-    if (hadCache) renderUsers(filterUsersList()); // pinta ya lo que ya tenemos, sin esperar red
-    else setTableLoading('panel-usuarios', true);
+    if (hadCache && !force) renderUsers(filterUsersList()); // pinta ya lo que ya tenemos, sin esperar red
+    if (!hadCache || force) setTableLoading('panel-usuarios', true);
     syncTableIfStale('users', function(rev) {
-      if (hadCache) setTableLoading('panel-usuarios', true);
+      if (hadCache && !force) setTableLoading('panel-usuarios', true);
       google.script.run
         .withSuccessHandler(function(users) {
           setTableLoading('panel-usuarios', false);
@@ -3303,7 +3305,7 @@
           }
         }))
         .listUsers(authToken);
-    });
+    }, force);
   }
 
   // Filtra allUsers por el texto del buscador (usuario)
@@ -4394,18 +4396,19 @@
   // ────────────────────────────────────────────
   // CLIENTES — Gestión (Admin only)
   // ────────────────────────────────────────────
-  function loadClientes() {
+  // force=true : botón "Actualizar" — ignora la comparación de revisión y
+  // siempre trae la tabla completa del backend.
+  function loadClientes(force) {
     var hadCache = haveTableCache.clients;
-    if (hadCache) {
+    if (hadCache && !force) {
       populateSelectFilter('filter-cliente-ciudad', allClients, 'ciudad', 'Todas las ciudades');
       populateSelectFilter('filter-cliente-zona',   allClients, 'zona',   'Todas las zonas');
       updateClienteFiltersCount();
       renderClientes();
-    } else {
-      setTableLoading('panel-clientes', true);
     }
+    if (!hadCache || force) setTableLoading('panel-clientes', true);
     syncTableIfStale('clients', function(rev) {
-      if (hadCache) setTableLoading('panel-clientes', true);
+      if (hadCache && !force) setTableLoading('panel-clientes', true);
       google.script.run
         .withSuccessHandler(function(rows) {
           setTableLoading('panel-clientes', false);
@@ -4426,7 +4429,7 @@
           }
         }))
         .listClients(authToken);
-    });
+    }, force);
   }
 
   // Filtra allClients por el buscador de texto + los sdrops de Ciudad/Zona. Compartido entre

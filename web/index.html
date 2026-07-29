@@ -500,11 +500,10 @@
             <input type="text" id="search-input" placeholder="Buscar cliente, orden, usuario..." oninput="debouncedFilterChange()">
           </div>
           <div class="filters-wrap">
-            <button class="btn-filters" id="btn-filters" onclick="toggleFiltersPanel(event)">
+            <button class="btn-filters" id="btn-filters" onclick="toggleFiltersPanel(event)" title="Filtros" aria-label="Filtros">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3">
                 <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
               </svg>
-              Filtros
               <span class="filters-count" id="filters-count" style="display:none">0</span>
             </button>
             <div class="filters-panel" id="filters-panel" hidden>
@@ -695,11 +694,10 @@
             <input type="text" id="if-search-input" placeholder="Buscar cliente, comentario, usuario..." oninput="debouncedInformeFilterChange()">
           </div>
           <div class="filters-wrap" id="if-filters-wrap">
-            <button class="btn-filters" id="if-btn-filters" onclick="toggleInformeFiltersPanel(event)">
+            <button class="btn-filters" id="if-btn-filters" onclick="toggleInformeFiltersPanel(event)" title="Filtros" aria-label="Filtros">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3">
                 <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
               </svg>
-              Filtros
               <span class="filters-count" id="if-filters-count" style="display:none">0</span>
             </button>
             <div class="filters-panel" id="if-filters-panel" hidden>
@@ -827,12 +825,18 @@
       <div class="card">
         <div class="records-toolbar">
           <div class="section-title" style="margin:0">Gestión de Usuarios</div>
-          <button class="btn-refresh" id="btn-new-user" onclick="openNewUserModal()">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            Nuevo usuario
-          </button>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn-refresh btn-icon-only" id="btn-new-user" onclick="openNewUserModal()" title="Nuevo usuario" aria-label="Nuevo usuario">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+            <button class="btn-refresh btn-icon-only" onclick="loadUsers(true)" title="Actualizar" aria-label="Actualizar">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="23 4 23 10 17 10"/><path d="M20.5 14.5A9 9 0 1 1 18 6.3"/>
+              </svg>
+            </button>
+          </div>
         </div>
         <div class="search-row">
           <div class="search-wrap">
@@ -865,12 +869,18 @@
       <div class="card">
         <div class="records-toolbar">
           <div class="section-title" style="margin:0">Gestión de Clientes</div>
-          <button class="btn-refresh" id="btn-new-cliente" onclick="openNewClienteModal()">
-            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
-              <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
-            </svg>
-            Nuevo cliente
-          </button>
+          <div style="display:flex;gap:8px;align-items:center">
+            <button class="btn-refresh btn-icon-only" id="btn-new-cliente" onclick="openNewClienteModal()" title="Nuevo cliente" aria-label="Nuevo cliente">
+              <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/>
+              </svg>
+            </button>
+            <button class="btn-refresh btn-icon-only" onclick="loadClientes(true)" title="Actualizar" aria-label="Actualizar">
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5">
+                <polyline points="23 4 23 10 17 10"/><path d="M20.5 14.5A9 9 0 1 1 18 6.3"/>
+              </svg>
+            </button>
+          </div>
         </div>
         <div class="search-row">
           <div class="search-wrap">
@@ -880,11 +890,10 @@
             <input type="text" id="search-clientes" placeholder="Buscar por código, razón social o fantasía..." oninput="renderClientes()">
           </div>
           <div class="filters-wrap">
-            <button class="btn-filters" id="btn-filters-clientes" onclick="toggleClienteFiltersPanel(event)">
+            <button class="btn-filters" id="btn-filters-clientes" onclick="toggleClienteFiltersPanel(event)" title="Filtros" aria-label="Filtros">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.3">
                 <polygon points="22 3 2 3 10 12.46 10 19 14 21 14 12.46 22 3"/>
               </svg>
-              Filtros
               <span class="filters-count" id="filters-count-clientes" style="display:none">0</span>
             </button>
             <div class="filters-panel" id="filters-panel-clientes" hidden>
