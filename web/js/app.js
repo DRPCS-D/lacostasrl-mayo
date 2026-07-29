@@ -2086,7 +2086,7 @@
       if (existing) return;
       var ov = document.createElement('div');
       ov.className = 'table-loading-overlay';
-      ov.innerHTML = '<div class="spinner"></div><span>Cargando…</span>';
+      ov.innerHTML = '<div class="table-loading-overlay-inner"><div class="spinner"></div><span>Cargando…</span></div>';
       panel.appendChild(ov);
     } else if (existing) {
       existing.remove();
