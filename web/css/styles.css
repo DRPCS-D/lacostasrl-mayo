@@ -990,13 +990,18 @@
        detectar una versión nueva en cualquier momento de la sesión (no solo al
        cargar la app), así que el aviso queda visible hasta que el usuario
        actualice o lo cierre. */
+    /* Abajo, como una notificación flotante — arriba tapaba el header y no
+       dejaba tocar el botón del menú lateral (hamburguesa). */
     .update-banner {
-      position: fixed; top: 0; left: 0; right: 0;
-      padding: calc(10px + env(safe-area-inset-top, 0px)) 14px 10px;
+      position: fixed; left: 12px; right: 12px;
+      bottom: calc(12px + 58px + env(safe-area-inset-bottom, 0px));
+      max-width: 420px; margin: 0 auto;
+      padding: 10px 12px;
       background: var(--primary); color: var(--white);
+      border-radius: 10px;
       display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
       font-size: 0.85rem; font-weight: 500;
-      z-index: 400; box-shadow: 0 2px 10px rgba(0,0,0,0.2);
+      z-index: 140; box-shadow: 0 4px 16px rgba(0,0,0,0.25);
     }
     .update-banner span { flex: 1 1 auto; min-width: 160px; }
     .update-banner button {
