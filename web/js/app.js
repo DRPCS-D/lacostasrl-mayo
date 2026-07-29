@@ -272,7 +272,20 @@
   // común en la práctica — el service worker instala la versión nueva DESPUÉS
   // de que la app ya está cargada y en uso (self.skipWaiting() hace que quede
   // activa casi al instante, sin pasar por un estado "waiting" visible).
+  // Justo después de un forceUpdateApp() (unregister + limpiar cachés +
+  // recargar), el registro del service worker desde cero DISPARA sus propias
+  // señales de ciclo de vida (controllerchange / updatefound→installed) —
+  // exactamente las mismas que usa este código para detectar "hay una
+  // versión nueva". Sin esto, la primera señal de esa reinstalación se
+  // interpreta como si hubiese otra versión más, y el banner reaparece solo
+  // apenas termina de recargar. La bandera dura una sola señal: cualquier
+  // detección genuina posterior en la misma sesión se avisa normalmente.
+  var suppressNextUpdateNotice = false;
+  try { suppressNextUpdateNotice = sessionStorage.getItem('appUpdateJustApplied') === '1'; } catch (e) {}
+  try { sessionStorage.removeItem('appUpdateJustApplied'); } catch (e) {}
+
   function showUpdateBanner() {
+    if (suppressNextUpdateNotice) { suppressNextUpdateNotice = false; return; }
     showUpdateBadge();
     var banner = document.getElementById('update-banner');
     if (banner) banner.hidden = false;
@@ -336,6 +349,10 @@
       })
       .catch(function() {})
       .then(function() {
+        // Ver comentario junto a suppressNextUpdateNotice: sin esto, la propia
+        // reinstalación del service worker que sigue a este reload dispara el
+        // banner de "hay una versión nueva" de nuevo, apenas terminó de actualizar.
+        try { sessionStorage.setItem('appUpdateJustApplied', '1'); } catch (e) {}
         // cache-busting: evita que el navegador reuse una respuesta HTTP cacheada del index
         var url = window.location.pathname + '?_v=' + Date.now();
         window.location.replace(url);
