@@ -4217,40 +4217,6 @@
         ? L.markerClusterGroup({ maxClusterRadius: 60, spiderfyOnMaxZoom: true, iconCreateFunction: informeClusterIcon })
         : L.layerGroup();
       informesClusterGroup.addTo(informesMap);
-
-      // En el zoom máximo, si dos o más puntos quedan tan cerca que ni así se
-      // separan, abrirlos en abanico automáticamente (sin esperar que el
-      // usuario toque el grupo) — spiderfyOnMaxZoom solo lo hace al tocar.
-      // _featureGroup es donde markercluster realmente pone los clusters
-      // visibles en el mapa; eachLayer() del grupo público itera los markers
-      // originales, no sirve para esto.
-      function autoSpiderfyAtMaxZoom() {
-        if (!informesClusterGroup._featureGroup) return; // fallback L.layerGroup(), sin clustering
-        if (informesMap.getZoom() < informesMap.getMaxZoom()) return;
-        informesClusterGroup._featureGroup.eachLayer(function(layer) {
-          // Si ya está abierto no volver a llamar spiderfy(): abrir el abanico
-          // puede mover el mapa para que los puntos separados entren en
-          // pantalla, lo que dispara moveend de nuevo — sin este chequeo eso
-          // reactivaba el listener de moveend y quedaba abriendo/cerrando en
-          // bucle. Por la misma razón, ya NO se escucha moveend: markercluster
-          // cierra el abanico solo cuando el mapa se mueve (comportamiento
-          // normal al panear), y reabrirlo automáticamente ahí es lo que
-          // generaba el ciclo.
-          if (layer instanceof L.MarkerCluster && informesClusterGroup._spiderfied !== layer) {
-            layer.spiderfy();
-          }
-        });
-      }
-      // markercluster todavía está terminando de reacomodar los clusters en
-      // el instante exacto en que dispara zoomend — spiderfy() llamado ahí
-      // mismo se ignora en silencio (chequea internamente una bandera de "en
-      // animación de zoom" que recién se apaga cuando termina la animación).
-      // 'animationend' es el evento propio de markercluster que avisa justo
-      // ese momento — más preciso que adivinar con un setTimeout. zoomend
-      // (con margen) queda como red de respaldo para cuando no hubo animación
-      // de por medio (p.ej. un cambio de zoom instantáneo, sin transición).
-      informesClusterGroup.on('animationend', autoSpiderfyAtMaxZoom);
-      informesMap.on('zoomend', function() { setTimeout(autoSpiderfyAtMaxZoom, 300); });
     }
 
     informesClusterGroup.clearLayers();
