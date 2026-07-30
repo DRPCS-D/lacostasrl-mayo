@@ -28,7 +28,15 @@ function saveInforme(token, data) {
     lat, lng,
     sess.username
   ]);
-  sheet.getRange(sheet.getLastRow(), 1).setValue(id);
+  // Forzar texto en la celda del ID antes de reescribirlo: si el ID generado
+  // resulta ser todo dígitos (pasa de vez en cuando, son 8 caracteres de un
+  // UUID), Sheets lo autodetecta como número bajo formato General y lo
+  // termina mostrando en notación científica. ensureTextIdColumn ya deja la
+  // columna en texto, pero solo la primera vez — si la hoja creció más allá
+  // de las filas que se formatearon esa vez, las filas nuevas quedan sin
+  // cubrir. Forzarlo acá, celda por celda en cada guardado, no depende de eso.
+  var idCell = sheet.getRange(sheet.getLastRow(), 1);
+  idCell.setNumberFormat('@').setValue(id);
   bumpRevision('informes');
   return { success: true, id: id };
 }

@@ -71,25 +71,17 @@ function getOrCreateInformesSheet() {
   return sheet;
 }
 
+// Deja toda la columna A en formato texto. Antes esto se saltaba si la fila
+// 2 ya estaba en texto (asumiendo que el resto de la columna también lo
+// estaba) — pero si la hoja creció más allá de las filas cubiertas la
+// primera vez, las filas nuevas quedaban sin formatear y ese chequeo nunca
+// se daba cuenta. Ahora se reaplica siempre; es una operación barata
+// (setNumberFormat no reescribe valores) así que no hay costo real en
+// llamarla en cada guardado. Para reparar filas que YA quedaron con el ID
+// convertido a número (se pierden los caracteres originales, no hay forma
+// de recuperarlos desde acá), ver runFixBrokenIdsNow().
 function ensureTextIdColumn(sheet) {
-  var lastRow = sheet.getLastRow();
-  if (lastRow < 2) {
-    sheet.getRange(1, 1, sheet.getMaxRows(), 1).setNumberFormat('@');
-    return;
-  }
-  var fmt = sheet.getRange(2, 1).getNumberFormat();
-  if (fmt === '@') return;
   sheet.getRange(1, 1, sheet.getMaxRows(), 1).setNumberFormat('@');
-  var range = sheet.getRange(2, 1, lastRow - 1, 1);
-  var values = range.getValues();
-  var updated = false;
-  for (var i = 0; i < values.length; i++) {
-    if (typeof values[i][0] === 'number') {
-      values[i][0] = String(values[i][0]);
-      updated = true;
-    }
-  }
-  if (updated) range.setValues(values);
 }
 
 // Ejecutar manualmente una vez desde el editor de Apps Script (▶ Ejecutar) para completar
@@ -97,6 +89,49 @@ function ensureTextIdColumn(sheet) {
 function runZonaBackfillNow() {
   var sheet = getOrCreateSheet();
   Logger.log('Backfill de Zona ejecutado sobre la hoja: ' + sheet.getName());
+}
+
+// Repara filas cuyo ID quedó guardado como número (y por eso se ve en
+// notación científica, ej. "6,70E+58") en vez del texto original de 8
+// caracteres — pasaba cuando el ID generado resultaba ser todo dígitos y la
+// columna no estaba (todavía) forzada a texto en el momento de guardar
+// (ver ensureTextIdColumn / el forzado por celda agregado en saveOrder y
+// saveInforme). El valor numérico original YA NO tiene los caracteres de
+// vuelta — no hay forma de recuperar el ID real desde acá — así que esto le
+// asigna un ID nuevo válido a cada fila afectada. El ID solo se usa como
+// identificador interno (no aparece en el nombre del archivo de la foto en
+// Drive, por ejemplo), así que cambiarlo por uno nuevo es seguro.
+//
+// Ejecutar manualmente una vez desde el editor de Apps Script (▶ Ejecutar,
+// elegir esta función) después de desplegar este archivo.
+function runFixBrokenIdsNow() {
+  var fixedOrders = fixBrokenIdsInSheet(getOrCreateSheet());
+  var fixedInformes = fixBrokenIdsInSheet(getOrCreateInformesSheet());
+  Logger.log('IDs reparados — Pedidos: ' + fixedOrders + ', Informes: ' + fixedInformes);
+}
+
+function fixBrokenIdsInSheet(sheet) {
+  var lastRow = sheet.getLastRow();
+  if (lastRow < 2) return 0;
+  var range = sheet.getRange(2, 1, lastRow - 1, 1);
+  var values = range.getValues();
+  var existing = {};
+  values.forEach(function(row) { existing[String(row[0])] = true; });
+  var fixed = 0;
+  for (var i = 0; i < values.length; i++) {
+    if (typeof values[i][0] === 'number') {
+      var newId;
+      do { newId = Utilities.getUuid().substring(0, 8).toUpperCase(); } while (existing[newId]);
+      existing[newId] = true;
+      values[i][0] = newId;
+      fixed++;
+    }
+  }
+  if (fixed > 0) {
+    range.setValues(values);
+    range.setNumberFormat('@');
+  }
+  return fixed;
 }
 
 function ensureZonaColumn(sheet) {

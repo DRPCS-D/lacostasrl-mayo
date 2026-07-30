@@ -34,7 +34,13 @@ function saveOrder(token, data) {
     data.obs || '',
     cliRecord.zona || ''
   ]);
-  sheet.getRange(sheet.getLastRow(), 1).setValue(id);
+  // Forzar texto en la celda del ID antes de reescribirlo — ver comentario
+  // igual en Informes.gs/saveInforme: ensureTextIdColumn solo cubre la
+  // columna la primera vez, y si la hoja creció más allá de esas filas, las
+  // nuevas quedan sin formato de texto y un ID todo-dígitos puede terminar
+  // en notación científica.
+  var idCell = sheet.getRange(sheet.getLastRow(), 1);
+  idCell.setNumberFormat('@').setValue(id);
   bumpRevision('orders');
   return { success: true, id: id };
 }
