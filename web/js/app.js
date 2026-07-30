@@ -3742,6 +3742,21 @@
   }
 
   // ── Geolocalización (obligatoria para guardar) ──
+  // Se intenta en dos etapas, porque pedir GPS puro con poco margen de tiempo
+  // falla seguido en la calle real: adentro de un local el satélite no se ve,
+  // y en celulares más viejos (o con ahorro de batería activado) un fix frío
+  // puede tardar bastante más de 10s. Además, ese reloj arranca ANTES de que
+  // el vendedor toque "Permitir" en el cartel de permiso, así que demorar en
+  // aceptarlo también consumía el tiempo disponible.
+  //   1) GPS de alta precisión, con margen amplio.
+  //   2) Si se agota el tiempo o el GPS no está disponible: ubicación por
+  //      red/wifi/antenas (mucho más rápida y sí funciona bajo techo),
+  //      aceptando una posición de hasta 2 minutos de antigüedad. Menos
+  //      precisa, pero para saber en qué comercio estuvo alcanza — y es
+  //      mejor que no poder cargar el informe.
+  var INFORME_GEO_PRECISO  = { enableHighAccuracy: true,  timeout: 30000, maximumAge: 0 };
+  var INFORME_GEO_APROX    = { enableHighAccuracy: false, timeout: 20000, maximumAge: 120000 };
+
   function captureInformeLocation() {
     var box    = document.getElementById('if-location-box');
     var status = document.getElementById('if-location-status');
@@ -3760,26 +3775,38 @@
       status.textContent = 'Este dispositivo/navegador no soporta ubicación. No se puede guardar el informe.';
       return;
     }
-    navigator.geolocation.getCurrentPosition(
-      function(pos) {
-        currentInformeLat = pos.coords.latitude;
-        currentInformeLng = pos.coords.longitude;
-        box.className = 'location-box ok';
-        status.textContent = 'Ubicación obtenida';
-        coords.textContent = currentInformeLat.toFixed(6) + ', ' + currentInformeLng.toFixed(6);
-        updateInformeSaveButtonState();
-      },
-      function(err) {
-        box.className = 'location-box err';
-        var msg = 'No se pudo obtener la ubicación.';
-        if (err && err.code === 1) msg = 'Ubicación denegada. Habilitá el permiso de ubicación para guardar el informe.';
-        else if (err && err.code === 2) msg = 'Ubicación no disponible en este momento.';
-        else if (err && err.code === 3) msg = 'Se agotó el tiempo esperando la ubicación.';
-        status.textContent = msg;
-        updateInformeSaveButtonState();
-      },
-      { enableHighAccuracy: true, timeout: 10000, maximumAge: 0 }
-    );
+
+    function onOk(pos) {
+      currentInformeLat = pos.coords.latitude;
+      currentInformeLng = pos.coords.longitude;
+      box.className = 'location-box ok';
+      status.textContent = 'Ubicación obtenida';
+      var txt = currentInformeLat.toFixed(6) + ', ' + currentInformeLng.toFixed(6);
+      // Mostrar el margen de error ayuda a saber si vino del GPS (pocos metros)
+      // o de la red (puede ser de cientos de metros).
+      var acc = pos.coords && pos.coords.accuracy;
+      if (acc) txt += ' (±' + Math.round(acc) + ' m)';
+      coords.textContent = txt;
+      updateInformeSaveButtonState();
+    }
+
+    function onFail(err) {
+      box.className = 'location-box err';
+      var msg = 'No se pudo obtener la ubicación.';
+      if (err && err.code === 1) msg = 'Ubicación denegada. Habilitá el permiso de ubicación para guardar el informe.';
+      else if (err && err.code === 2) msg = 'Ubicación no disponible. Verificá que el GPS esté encendido.';
+      else if (err && err.code === 3) msg = 'Se agotó el tiempo esperando la ubicación. Probá salir al exterior y tocar Reintentar.';
+      status.textContent = msg;
+      updateInformeSaveButtonState();
+    }
+
+    navigator.geolocation.getCurrentPosition(onOk, function(err) {
+      // Permiso denegado (código 1) no se reintenta: sin permiso, ninguna
+      // estrategia va a funcionar y el segundo cartel solo confunde.
+      if (err && err.code === 1) { onFail(err); return; }
+      status.textContent = 'Buscando ubicación aproximada...';
+      navigator.geolocation.getCurrentPosition(onOk, onFail, INFORME_GEO_APROX);
+    }, INFORME_GEO_PRECISO);
   }
 
   function updateInformeSaveButtonState() {
