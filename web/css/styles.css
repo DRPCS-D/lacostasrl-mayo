@@ -920,6 +920,16 @@
       font-size: 0.7rem; font-weight: 700;
       margin-left: 6px; letter-spacing: 0.5px;
     }
+    /* Botón "Cambiar" que aparece junto al badge una vez elegido el cliente
+       — el input queda de solo lectura mientras tanto (ver
+       setClienteFieldLocked en app.js), así que esta es la única forma de
+       volver a buscar otro cliente. */
+    .cliente-clear-btn {
+      background: none; border: none; padding: 0; margin-left: 8px;
+      color: var(--primary); font-size: 0.75rem; font-weight: 700;
+      text-decoration: underline; cursor: pointer;
+    }
+    .cliente-clear-btn:hover { color: var(--primary-dark); }
 
     /* ── Duplicate warning ── */
     .dup-warning {

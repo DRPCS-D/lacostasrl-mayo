@@ -2478,6 +2478,7 @@
           badge.className = 'cliente-badge';
           badge.style.display = 'inline-block';
         }
+        setClienteFieldLocked('e-cliente', true);
       }
     }
     document.getElementById('e-nroOrden').value   = r['N° Orden']    || '';
@@ -3532,6 +3533,7 @@
       badgeId: 'cliente-codigo-badge',
       suggestionsId: 'cliente-suggestions',
       ciudadFieldId: 'f-ciudad',
+      clearBtnId: 'f-cliente-clear-btn',
       getCodigo: function() { return selectedClienteCodigo; },
       setCodigo: function(v) { selectedClienteCodigo = v; },
       filtered: [], activeIdx: -1
@@ -3540,6 +3542,7 @@
       badgeId: 'e-cliente-codigo-badge',
       suggestionsId: 'e-cliente-suggestions',
       ciudadFieldId: 'e-ciudad',
+      clearBtnId: 'e-cliente-clear-btn',
       getCodigo: function() { return selectedEditClienteCodigo; },
       setCodigo: function(v) { selectedEditClienteCodigo = v; },
       filtered: [], activeIdx: -1
@@ -3548,6 +3551,7 @@
       badgeId: 'if-cliente-codigo-badge',
       suggestionsId: 'if-cliente-suggestions',
       ciudadFieldId: 'if-ciudad',
+      clearBtnId: 'if-cliente-clear-btn',
       getCodigo: function() { return selectedInformeClienteCodigo; },
       setCodigo: function(v) { selectedInformeClienteCodigo = v; },
       onSelect: function() { updateInformeSaveButtonState(); },
@@ -3557,11 +3561,36 @@
       badgeId: 'ie-cliente-codigo-badge',
       suggestionsId: 'ie-cliente-suggestions',
       ciudadFieldId: null,
+      clearBtnId: 'ie-cliente-clear-btn',
       getCodigo: function() { return selectedEditInformeClienteCodigo; },
       setCodigo: function(v) { selectedEditInformeClienteCodigo = v; },
       filtered: [], activeIdx: -1
     }
   };
+
+  // El input de cliente sirve para buscar mientras no hay nada elegido, y
+  // pasa a ser de solo lectura una vez que sí — antes se podía seguir
+  // escribiendo ahí mismo, y como cualquier tecleo invalida la selección
+  // (ver onClienteInput), un vendedor que tocaba el campo por error después
+  // de elegir el cliente se quedaba sin poder guardar sin darse cuenta de
+  // por qué. El botón "Cambiar" es la única forma de volver a buscar otro.
+  function setClienteFieldLocked(inputId, locked) {
+    var input = document.getElementById(inputId);
+    if (input) input.readOnly = !!locked;
+    var ctx = clienteACContexts[inputId];
+    var btn = ctx && ctx.clearBtnId ? document.getElementById(ctx.clearBtnId) : null;
+    if (btn) btn.style.display = locked ? '' : 'none';
+  }
+
+  function clearAndFocusCliente(inputId) {
+    clearClienteSelection(inputId);
+    var input = document.getElementById(inputId);
+    if (input) {
+      input.value = '';
+      input.classList.remove('filled');
+      input.focus();
+    }
+  }
 
   function filterClients(query) {
     var q = String(query || '').trim().toLowerCase();
@@ -3625,6 +3654,7 @@
       }
     }
     hideClienteSuggestions(inputId);
+    setClienteFieldLocked(inputId, true);
     if (typeof ctx.onSelect === 'function') ctx.onSelect(c);
   }
 
@@ -3632,6 +3662,7 @@
   function clearClienteSelection(inputId) {
     var ctx = clienteACContexts[inputId]; if (!ctx) return;
     if (ctx.getCodigo()) ctx.setCodigo('');
+    setClienteFieldLocked(inputId, false);
     var badge = document.getElementById(ctx.badgeId);
     if (badge) { badge.style.display = 'none'; badge.textContent = ''; }
     if (ctx.ciudadFieldId) {
@@ -4382,6 +4413,7 @@
         selectedEditInformeClienteCodigo = match.codigo;
         var badge = document.getElementById('ie-cliente-codigo-badge');
         if (badge) { badge.textContent = match.codigo; badge.className = 'cliente-badge'; badge.style.display = 'inline-block'; }
+        setClienteFieldLocked('ie-cliente', true);
       }
     }
     document.getElementById('ie-comentario').value = r['Comentario'] || '';
