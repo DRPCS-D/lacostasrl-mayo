@@ -3780,16 +3780,17 @@
       return;
     }
 
-    function onOk(pos) {
+    function onOk(pos, viaPreciso) {
       currentInformeLat = pos.coords.latitude;
       currentInformeLng = pos.coords.longitude;
       box.className = 'location-box ok';
       status.textContent = 'Ubicación obtenida';
       var txt = currentInformeLat.toFixed(6) + ', ' + currentInformeLng.toFixed(6);
-      // Mostrar el margen de error ayuda a saber si vino del GPS (pocos metros)
-      // o de la red (puede ser de cientos de metros).
+      // Mostrar el margen de error y qué llamada la resolvió ayuda a saber si
+      // vino del GPS (pocos metros) o de la red (puede ser de cientos de
+      // metros, o directo estar mal si la IP no ubica bien la zona).
       var acc = pos.coords && pos.coords.accuracy;
-      if (acc) txt += ' (±' + Math.round(acc) + ' m)';
+      if (acc) txt += ' (±' + Math.round(acc) + ' m · ' + (viaPreciso ? 'GPS' : 'red') + ')';
       coords.textContent = txt;
       updateInformeSaveButtonState();
     }
@@ -3804,12 +3805,12 @@
       updateInformeSaveButtonState();
     }
 
-    navigator.geolocation.getCurrentPosition(onOk, function(err) {
+    navigator.geolocation.getCurrentPosition(function(pos) { onOk(pos, true); }, function(err) {
       // Permiso denegado (código 1) no se reintenta: sin permiso, ninguna
       // estrategia va a funcionar y el segundo cartel solo confunde.
       if (err && err.code === 1) { onFail(err); return; }
       status.textContent = 'Buscando ubicación aproximada...';
-      navigator.geolocation.getCurrentPosition(onOk, onFail, INFORME_GEO_APROX);
+      navigator.geolocation.getCurrentPosition(function(pos) { onOk(pos, false); }, onFail, INFORME_GEO_APROX);
     }, INFORME_GEO_PRECISO);
   }
 
