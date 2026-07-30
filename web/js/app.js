@@ -3755,7 +3755,11 @@
   //      precisa, pero para saber en qué comercio estuvo alcanza — y es
   //      mejor que no poder cargar el informe.
   var INFORME_GEO_PRECISO  = { enableHighAccuracy: true,  timeout: 30000, maximumAge: 0 };
-  var INFORME_GEO_APROX    = { enableHighAccuracy: false, timeout: 20000, maximumAge: 120000 };
+  // maximumAge en 0: forzar una resolución fresca en vez de reusar una
+  // posición ya cacheada por el navegador/SO. Con margen alto acá, una
+  // notebook/PC (sin GPS, ubicándose solo por Wi-Fi/IP) podía devolver un fix
+  // viejo de una red distinta a la actual y quedar "lejos" sin avisar.
+  var INFORME_GEO_APROX    = { enableHighAccuracy: false, timeout: 20000, maximumAge: 0 };
 
   function captureInformeLocation() {
     var box    = document.getElementById('if-location-box');
