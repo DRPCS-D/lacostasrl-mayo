@@ -4049,7 +4049,8 @@
   function onInformeFilterChange() {
     informesCurrentPage = 1;
     pendingInformeMapFocusId = null; // filtrar a mano vuelve a la vista general del mapa
-    var qHoy = document.getElementById('if-quick-hoy'), qMes = document.getElementById('if-quick-mes'), q7d = document.getElementById('if-quick-7d');
+    var qTodo = document.getElementById('if-quick-todo'), qHoy = document.getElementById('if-quick-hoy'), qMes = document.getElementById('if-quick-mes'), q7d = document.getElementById('if-quick-7d');
+    if (qTodo) qTodo.classList.remove('active');
     if (qHoy) qHoy.classList.remove('active');
     if (qMes) qMes.classList.remove('active');
     if (q7d) q7d.classList.remove('active');
@@ -4116,6 +4117,8 @@
     informeSortState = { column: null, direction: 'asc' };
     updateInformeFiltersCount();
     onInformeFilterChange();
+    var qTodo = document.getElementById('if-quick-todo');
+    if (qTodo) qTodo.classList.add('active');
   }
   function updateInformeFiltersCount() {
     var n = 0;
