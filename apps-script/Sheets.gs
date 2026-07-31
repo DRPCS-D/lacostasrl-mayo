@@ -193,7 +193,7 @@ function getOrCreateClientsSheet() {
   var sheet = ss.getSheetByName(CLIENTS_SHEET_NAME);
   if (!sheet) {
     sheet = ss.insertSheet(CLIENTS_SHEET_NAME);
-    var headers = ['Codigo', 'RazonSocial', 'NombreFantasia', 'Ciudad', 'Zona'];
+    var headers = ['Codigo', 'RazonSocial', 'NombreFantasia', 'Ciudad', 'Zona', 'Lat', 'Lng'];
     sheet.appendRow(headers);
     var hr = sheet.getRange(1, 1, 1, headers.length);
     hr.setFontWeight('bold').setBackground('#8A1B1A').setFontColor('#ffffff').setHorizontalAlignment('center');
@@ -203,6 +203,8 @@ function getOrCreateClientsSheet() {
     sheet.setColumnWidth(3, 200);
     sheet.setColumnWidth(4, 140);
     sheet.setColumnWidth(5, 140);
+    sheet.setColumnWidth(6, 110);
+    sheet.setColumnWidth(7, 110);
   } else {
     // Migración: si la pestaña ya existía con columna ID, eliminarla
     if (sheet.getLastColumn() >= 1) {
@@ -219,7 +221,7 @@ function getOrCreateClientsSheet() {
 function ensureClientsCiudadZonaColumns(sheet) {
   var lastCol = sheet.getLastColumn();
   var headers = lastCol > 0 ? sheet.getRange(1, 1, 1, lastCol).getValues()[0] : [];
-  ['Ciudad', 'Zona'].forEach(function(name) {
+  ['Ciudad', 'Zona', 'Lat', 'Lng'].forEach(function(name) {
     if (headers.indexOf(name) === -1) {
       var col = sheet.getLastColumn() + 1;
       sheet.getRange(1, col).setValue(name)

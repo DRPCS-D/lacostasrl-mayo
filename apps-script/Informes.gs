@@ -38,6 +38,9 @@ function saveInforme(token, data) {
   var idCell = sheet.getRange(sheet.getLastRow(), 1);
   idCell.setNumberFormat('@').setValue(id);
   bumpRevision('informes');
+  // Deja la ubicación del cliente actualizada con la de esta visita (la más
+  // reciente). No debe hacer fallar el guardado del informe si algo sale mal acá.
+  try { updateClientLocation(codigoCliente, lat, lng); } catch (e) {}
   return { success: true, id: id };
 }
 

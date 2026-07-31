@@ -54,6 +54,9 @@
   var informesClusterGroup = null; // agrupa markers cercanos según el zoom, para rendir bien con muchos puntos
   var pendingInformeMapFocusId = null; // "Ver en mapa": ID a enfocar en el próximo render del mapa
   var informesMarkers = [];     // markers actuales del mapa
+  var clientesMap = null;             // instancia Leaflet del mapa de clientes, se crea una sola vez
+  var clientesClusterGroup = null;    // agrupa markers cercanos según el zoom
+  var pendingClienteMapFocusCodigo = null; // "Ver en el mapa": código a enfocar en el próximo render
   var informesCurrentTab = 'nuevo-informe';
   var informesCurrentPage = 1;
   var INFORMES_PAGE_SIZE = 10;
@@ -76,7 +79,7 @@
   var TABLE_PANEL_IDS = {
     orders: ['panel-guardados'],
     informes: ['panel-informes', 'panel-mapa'],
-    clients: ['panel-clientes'],
+    clients: ['panel-clientes', 'panel-mapa-clientes'],
     users: ['panel-usuarios']
   };
 
@@ -192,6 +195,7 @@
     // Pestañas admin: visibles para Admin y AdminL (AdminL en modo lectura)
     document.getElementById('drawer-usuarios').style.display = canSeeAll ? '' : 'none';
     document.getElementById('drawer-clientes').style.display = '';
+    document.getElementById('drawer-mapa-clientes').style.display = '';
     document.getElementById('drawer-reportes').style.display = canSeeAll ? '' : 'none';
     document.getElementById('drawer-informes').style.display = '';
     document.getElementById('home-card-usuarios').style.display = canSeeAll ? '' : 'none';
@@ -385,12 +389,12 @@
   }
 
   // ── Sections (navegación principal desde el drawer) ──
-  var SECTIONS = ['inicio', 'pedidos', 'informes', 'usuarios', 'clientes', 'reportes'];
+  var SECTIONS = ['inicio', 'pedidos', 'informes', 'usuarios', 'clientes', 'mapa-clientes', 'reportes'];
   var currentSection = null;
   // Todos los tab-panel que existen fuera de "Pedidos" (Pedidos tiene los suyos
   // propios manejados por switchTab). Se usa para desactivar todo antes de
   // activar el panel de la sección elegida.
-  var NON_PEDIDOS_PANELS = ['inicio', 'nuevo-informe', 'informes', 'mapa', 'usuarios', 'clientes', 'reportes'];
+  var NON_PEDIDOS_PANELS = ['inicio', 'nuevo-informe', 'informes', 'mapa', 'usuarios', 'clientes', 'mapa-clientes', 'reportes'];
 
   function switchSection(name, opts) {
     opts = opts || {};
@@ -457,6 +461,16 @@
           if (pb) pb.classList.remove('active');
         });
       document.getElementById('panel-clientes').classList.add('active');
+      loadClientes();
+    } else if (name === 'mapa-clientes') {
+      tabBar.style.display = 'none';
+      tabBarInformes.style.display = 'none';
+      ['nuevo', 'guardados'].concat(NON_PEDIDOS_PANELS.filter(function(t) { return t !== 'mapa-clientes'; }))
+        .forEach(function(t) {
+          var pb = document.getElementById('panel-' + t);
+          if (pb) pb.classList.remove('active');
+        });
+      document.getElementById('panel-mapa-clientes').classList.add('active');
       loadClientes();
     } else if (name === 'reportes') {
       tabBar.style.display = 'none';
@@ -1548,7 +1562,10 @@
           }
         } else if (key === 'clients') {
           allClients = rows;
-          if (visible) renderClientes();
+          if (visible) {
+            renderClientes();
+            if (currentSection === 'mapa-clientes') renderClientesMap(true); // no tocar el zoom/pan del usuario
+          }
         } else if (key === 'users') {
           allUsers = rows;
           usersCache = {};
@@ -4541,30 +4558,37 @@
   // force=true : botón "Actualizar" — ignora la comparación de revisión y
   // siempre trae la tabla completa del backend.
   function loadClientes(force) {
+    // Clientes y Mapa de clientes son dos secciones distintas que comparten los
+    // mismos datos y el mismo botón "Actualizar" — el spinner tiene que ir en
+    // la que esté visible en este momento (mismo patrón que loadInformes con
+    // Informes/Mapa).
+    var loadingPanel = currentSection === 'mapa-clientes' ? 'panel-mapa-clientes' : 'panel-clientes';
     var hadCache = haveTableCache.clients;
     if (hadCache && !force) {
       populateSelectFilter('filter-cliente-ciudad', allClients, 'ciudad', 'Todas las ciudades');
       populateSelectFilter('filter-cliente-zona',   allClients, 'zona',   'Todas las zonas');
       updateClienteFiltersCount();
       renderClientes();
+      if (currentSection === 'mapa-clientes') renderClientesMap();
     }
-    if (!hadCache || force) setTableLoading('panel-clientes', true);
+    if (!hadCache || force) setTableLoading(loadingPanel, true);
     syncTableIfStale('clients', function(rev) {
-      if (hadCache && !force) setTableLoading('panel-clientes', true);
+      if (hadCache && !force) setTableLoading(loadingPanel, true);
       google.script.run
         .withSuccessHandler(function(rows) {
-          setTableLoading('panel-clientes', false);
+          setTableLoading(loadingPanel, false);
           allClients = rows || [];
           populateSelectFilter('filter-cliente-ciudad', allClients, 'ciudad', 'Todas las ciudades');
           populateSelectFilter('filter-cliente-zona',   allClients, 'zona',   'Todas las zonas');
           updateClienteFiltersCount();
           renderClientes();
+          if (currentSection === 'mapa-clientes') renderClientesMap();
           knownRevisions.clients = rev;
           haveTableCache.clients = true;
           saveTableCache('clients', allClients, rev);
         })
         .withFailureHandler(handleAuthError(function(err) {
-          setTableLoading('panel-clientes', false);
+          setTableLoading(loadingPanel, false);
           if (!hadCache) {
             document.getElementById('clientes-body').innerHTML =
               '<tr><td colspan="4" class="empty-table">Error: ' + (err ? err.message : '') + '</td></tr>';
@@ -4629,6 +4653,72 @@
     }).join('');
   }
 
+  // keepView=true: solo actualiza los markers, sin tocar el zoom/centro actual
+  // del mapa (usado por el refresco silencioso de fondo). Mismo patrón que
+  // renderInformesMap().
+  function renderClientesMap(keepView) {
+    var container = document.getElementById('clientes-map');
+    if (!container || typeof L === 'undefined') return;
+
+    if (!clientesMap) {
+      clientesMap = L.map(container).setView([-25.2637, -57.5759], 6); // Paraguay aprox., ajustado por fitBounds abajo
+      L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+        maxZoom: 19,
+        attribution: '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
+      }).addTo(clientesMap);
+      clientesClusterGroup = (typeof L.markerClusterGroup === 'function')
+        ? L.markerClusterGroup({ maxClusterRadius: 60 })
+        : L.layerGroup();
+      clientesClusterGroup.addTo(clientesMap);
+    }
+
+    clientesClusterGroup.clearLayers();
+
+    var rows = getFilteredClientRows().filter(function(c) {
+      var lat = parseFloat(c.lat), lng = parseFloat(c.lng);
+      return isFinite(lat) && isFinite(lng);
+    });
+
+    var focusMarker = null;
+    rows.forEach(function(c) {
+      var lat = parseFloat(c.lat), lng = parseFloat(c.lng);
+      var popup = '<b>' + esc(c.razonSocial) + '</b>' +
+        (c.nombreFantasia ? ' <span style="color:var(--gray-500)">(' + esc(c.nombreFantasia) + ')</span>' : '') +
+        '<br>Código: ' + esc(c.codigo) +
+        (c.ciudad ? '<br>' + esc(c.ciudad) : '') + (c.zona ? ' · ' + esc(c.zona) : '');
+      var marker = L.marker([lat, lng]).bindPopup(popup);
+      marker._clienteCodigo = c.codigo;
+      clientesClusterGroup.addLayer(marker);
+      if (pendingClienteMapFocusCodigo && String(c.codigo) === pendingClienteMapFocusCodigo) focusMarker = marker;
+    });
+
+    if (focusMarker) pendingClienteMapFocusCodigo = null;
+
+    if (keepView) {
+      // Refresco silencioso de fondo: no tocar la vista actual del usuario.
+    } else if (focusMarker) {
+      if (typeof clientesClusterGroup.zoomToShowLayer === 'function') {
+        clientesClusterGroup.zoomToShowLayer(focusMarker, function() { focusMarker.openPopup(); });
+      } else {
+        clientesMap.setView(focusMarker.getLatLng(), 16);
+        focusMarker.openPopup();
+      }
+    } else if (rows.length) {
+      var bounds = L.latLngBounds(rows.map(function(c) { return [parseFloat(c.lat), parseFloat(c.lng)]; }));
+      clientesMap.fitBounds(bounds, { padding: [30, 30], maxZoom: 15 });
+    }
+    setTimeout(function() { clientesMap.invalidateSize(); }, 0);
+  }
+
+  // Desde el modal "Ver Cliente": abre el mapa centrado/con popup en ese cliente.
+  function viewCurrentClienteOnMap() {
+    if (!viewingClienteCodigo) return;
+    var codigo = String(viewingClienteCodigo);
+    closeViewClienteModal();
+    pendingClienteMapFocusCodigo = codigo;
+    switchSection('mapa-clientes');
+  }
+
   function openNewClienteModal() {
     editingClienteCodigo = null;
     document.getElementById('cliente-modal-title').textContent = 'Nuevo Cliente';
@@ -4677,6 +4767,8 @@
     document.getElementById('vc-fantasia').textContent = c.nombreFantasia || '';
     document.getElementById('vc-ciudad').textContent   = c.ciudad || '';
     document.getElementById('vc-zona').textContent     = c.zona || '';
+    var hasLoc = isFinite(parseFloat(c.lat)) && isFinite(parseFloat(c.lng));
+    document.getElementById('btn-view-cliente-map').style.display = hasLoc ? '' : 'none';
     document.getElementById('btn-view-cliente-edit').style.display   = (authRol === 'Admin') ? '' : 'none';
     document.getElementById('btn-view-cliente-delete').style.display = (authRol === 'Admin') ? '' : 'none';
     renderClienteOrdersStats(c);
