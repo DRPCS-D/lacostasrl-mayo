@@ -604,6 +604,33 @@
     };
   }
 
+  // Con señal débil, google.script.run puede no disparar nunca ni el success
+  // ni el failure handler: el pedido llega al backend y se guarda, pero la
+  // respuesta se pierde en el camino de vuelta. Sin esto, el botón quedaba
+  // en "Guardando..." bloqueado para siempre (solo se destrababa con F5), y
+  // el usuario no tenía forma de saber si en realidad ya se había guardado.
+  // No cancela el pedido real (no se puede desde el cliente) — solo
+  // destraba la UI a los SAVE_TIMEOUT_MS y avisa para que el usuario revise
+  // la lista antes de reintentar y evite duplicados.
+  var SAVE_TIMEOUT_MS = 20000;
+  function armSaveTimeout(resetUi) {
+    var settled = false;
+    var timer = setTimeout(function() {
+      if (settled) return;
+      settled = true;
+      resetUi();
+      showToast('La conexión está lenta y no se pudo confirmar el guardado. Revisá la lista antes de reintentar.', 'error');
+    }, SAVE_TIMEOUT_MS);
+    // Los handlers de éxito/error deben llamar a esto antes de hacer nada:
+    // si devuelve true, el timeout ya se disparó y ellos no deben tocar la UI.
+    return function() {
+      if (settled) return true;
+      settled = true;
+      clearTimeout(timer);
+      return false;
+    };
+  }
+
   // ────────────────────────────────────────────
   // TABS
   // ────────────────────────────────────────────
@@ -1295,8 +1322,16 @@
     // la subimos a Drive primero y luego guardamos el pedido.
     var doSave = function() {
       data.imageFileId = currentFileId || '';
+      var settled = armSaveTimeout(function() {
+        // No se sabe si el pedido llegó a guardarse o no — no tocamos el
+        // formulario ni avanzamos la cola de PDF, solo destrabamos el botón
+        // y refrescamos la lista por si el guardado sí llegó.
+        setSaving(false);
+        loadRecords();
+      });
       google.script.run
         .withSuccessHandler(function(res) {
+          if (settled()) return;
           setSaving(false);
           // ¿Quedan más páginas del PDF en la cola? → avanzar a la siguiente
           if (pdfQueue.length > 1 && pdfIndex < pdfQueue.length - 1) {
@@ -1324,6 +1359,7 @@
             .getOrders(authToken);
         })
         .withFailureHandler(handleAuthError(function(err) {
+          if (settled()) return;
           setSaving(false);
           showToast('Error al guardar: ' + (err ? err.message : ''), 'error');
         }))
@@ -1333,13 +1369,16 @@
     if (!currentFileId && currentBase64) {
       // Subir foto a Drive primero
       document.getElementById('save-label').textContent = 'Subiendo foto...';
+      var settledUpload = armSaveTimeout(function() { setSaving(false); });
       google.script.run
         .withSuccessHandler(function(res) {
+          if (settledUpload()) return;
           currentFileId = res.fileId;
           document.getElementById('save-label').textContent = 'Guardando...';
           doSave();
         })
         .withFailureHandler(handleAuthError(function(err) {
+          if (settledUpload()) return;
           setSaving(false);
           showToast('Error subiendo foto: ' + (err ? err.message : ''), 'error');
         }))
@@ -2653,14 +2692,20 @@
     };
 
     function doUpdate() {
+      var settled = armSaveTimeout(function() {
+        btn.disabled = false; btn.textContent = 'Guardar cambios';
+        loadRecords(); // por si el guardado sí llegó, que se vea en la lista
+      });
       google.script.run
         .withSuccessHandler(function() {
+          if (settled()) return;
           btn.disabled = false; btn.textContent = 'Guardar cambios';
           showToast('Pedido actualizado', 'success');
           closeEditModal();
           loadRecords();
         })
         .withFailureHandler(handleAuthError(function(err) {
+          if (settled()) return;
           btn.disabled = false; btn.textContent = 'Guardar cambios';
           showToast('Error: ' + (err ? err.message : ''), 'error');
         }))
@@ -2669,13 +2714,18 @@
 
     if (editingNewImageBase64) {
       btn.textContent = 'Subiendo foto...';
+      var settledUpload = armSaveTimeout(function() {
+        btn.disabled = false; btn.textContent = 'Guardar cambios';
+      });
       google.script.run
         .withSuccessHandler(function(res) {
+          if (settledUpload()) return;
           payload.imageFileId = res.fileId;
           btn.textContent = 'Guardando...';
           doUpdate();
         })
         .withFailureHandler(handleAuthError(function(err) {
+          if (settledUpload()) return;
           btn.disabled = false; btn.textContent = 'Guardar cambios';
           showToast('Error subiendo foto: ' + (err ? err.message : ''), 'error');
         }))
@@ -3889,8 +3939,14 @@
     var btn = document.getElementById('if-btn-save');
     var label = document.getElementById('if-save-label');
     btn.disabled = true; label.textContent = 'Guardando...';
+    var settled = armSaveTimeout(function() {
+      updateInformeSaveButtonState();
+      label.textContent = 'Guardar informe';
+      loadInformes(); // por si el guardado sí llegó, que se vea en la lista
+    });
     google.script.run
       .withSuccessHandler(function() {
+        if (settled()) return;
         btn.disabled = false; label.textContent = 'Guardar informe';
         showToast('Informe guardado', 'success');
         clearInformeForm();
@@ -3898,6 +3954,7 @@
         loadInformes();
       })
       .withFailureHandler(handleAuthError(function(err) {
+        if (settled()) return;
         updateInformeSaveButtonState();
         label.textContent = 'Guardar informe';
         showToast('Error: ' + (err ? err.message : 'desconocido'), 'error');
@@ -4454,14 +4511,20 @@
     };
     var btn = document.getElementById('btn-informe-edit-save');
     btn.disabled = true; btn.textContent = 'Guardando...';
+    var settled = armSaveTimeout(function() {
+      btn.disabled = false; btn.textContent = 'Guardar cambios';
+      loadInformes(); // por si el guardado sí llegó, que se vea en la lista
+    });
     google.script.run
       .withSuccessHandler(function() {
+        if (settled()) return;
         btn.disabled = false; btn.textContent = 'Guardar cambios';
         showToast('Informe actualizado', 'success');
         closeInformeEditModal();
         loadInformes();
       })
       .withFailureHandler(handleAuthError(function(err) {
+        if (settled()) return;
         btn.disabled = false; btn.textContent = 'Guardar cambios';
         showToast('Error: ' + (err ? err.message : 'desconocido'), 'error');
       }))
