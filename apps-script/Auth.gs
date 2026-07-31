@@ -60,11 +60,16 @@ function login(username, password) {
   if (user.hash !== hashPassword(password)) throw new Error('Usuario o contraseña incorrectos.');
 
   var token = Utilities.getUuid();
-  var expires = new Date().getTime() + 4 * 60 * 60 * 1000;
+  // 21600s (6h) es el máximo que permite CacheService — no se puede pedir
+  // más. Si en algún momento hace falta una sesión bastante más larga
+  // (días), hay que guardar la sesión en otro lado (PropertiesService no
+  // expira solo, por ejemplo) en vez de acá.
+  var SESSION_TTL_SECONDS = 21600;
+  var expires = new Date().getTime() + SESSION_TTL_SECONDS * 1000;
   CacheService.getScriptCache().put(
     'sess_' + token,
     JSON.stringify({ userId: user.id, username: user.username, rol: user.rol, fotoUrl: user.fotoUrl, expires: expires }),
-    14400
+    SESSION_TTL_SECONDS
   );
   return { token: token, username: user.username, rol: user.rol, fotoUrl: user.fotoUrl };
 }

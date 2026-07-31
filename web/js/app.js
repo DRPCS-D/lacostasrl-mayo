@@ -581,16 +581,26 @@
     haveTableCache = { orders: false, informes: false, clients: false, users: false };
   }
 
-  // Wraps failure handlers to catch session expiry
+  // Wraps failure handlers to catch session expiry.
+  // El handler específico de cada guardado SIEMPRE se llama primero — es el
+  // que reactiva su botón ("Guardando..." → "Guardar") y limpia su propio
+  // estado. Antes, si el error era de sesión expirada, se hacía un `return`
+  // temprano que se saltaba ese handler por completo: el botón quedaba
+  // pegado en "Guardando..." para siempre (deshabilitado, sin volver a
+  // habilitarse nunca), y encima aunque el usuario volviera a iniciar
+  // sesión, la app es de una sola página — ese mismo botón roto seguía ahí,
+  // solo un F5 lo arreglaba. El toast de "Sesión expirada" se muestra
+  // DESPUÉS y pisa (sincrónicamente, antes de que el navegador pinte nada)
+  // cualquier toast de error que el handler específico haya mostrado, así
+  // que no se ve doble mensaje.
   function handleAuthError(handler) {
     return function(err) {
+      if (handler) handler(err);
       if (err && err.message && err.message.indexOf('Sesión expirada') !== -1) {
         clearAuth();
         showToast('Sesión expirada. Ingresá nuevamente.', 'error');
         showScreen('login');
-        return;
       }
-      if (handler) handler(err);
     };
   }
 
