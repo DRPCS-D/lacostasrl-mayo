@@ -59,38 +59,81 @@ function login(username, password) {
   if (user.activo !== 'true') throw new Error('Usuario desactivado. Contactá al administrador.');
   if (user.hash !== hashPassword(password)) throw new Error('Usuario o contraseña incorrectos.');
 
+  // Se guarda en PropertiesService en vez de CacheService: CacheService
+  // vence sí o sí a las 6h como máximo (no hay forma de pedirle más), y acá
+  // queremos sesiones que en la práctica no venzan solas — 10 años, con
+  // limpieza de las vencidas en cada login (ver cleanupExpiredSessions) para
+  // no acumular propiedades para siempre.
   var token = Utilities.getUuid();
-  // 21600s (6h) es el máximo que permite CacheService — no se puede pedir
-  // más. Si en algún momento hace falta una sesión bastante más larga
-  // (días), hay que guardar la sesión en otro lado (PropertiesService no
-  // expira solo, por ejemplo) en vez de acá.
-  var SESSION_TTL_SECONDS = 21600;
-  var expires = new Date().getTime() + SESSION_TTL_SECONDS * 1000;
-  CacheService.getScriptCache().put(
+  var SESSION_TTL_MS = 10 * 365 * 24 * 60 * 60 * 1000; // 10 años
+  var expires = new Date().getTime() + SESSION_TTL_MS;
+  cleanupExpiredSessions();
+  PropertiesService.getScriptProperties().setProperty(
     'sess_' + token,
-    JSON.stringify({ userId: user.id, username: user.username, rol: user.rol, fotoUrl: user.fotoUrl, expires: expires }),
-    SESSION_TTL_SECONDS
+    JSON.stringify({ userId: user.id, username: user.username, rol: user.rol, fotoUrl: user.fotoUrl, expires: expires })
   );
   return { token: token, username: user.username, rol: user.rol, fotoUrl: user.fotoUrl };
 }
 
 function logout(token) {
-  if (token) CacheService.getScriptCache().remove('sess_' + token);
+  if (token) PropertiesService.getScriptProperties().deleteProperty('sess_' + token);
   return true;
 }
 
 function getSession(token) {
   if (!token) return null;
-  var raw = CacheService.getScriptCache().get('sess_' + token);
+  var props = PropertiesService.getScriptProperties();
+  var raw = props.getProperty('sess_' + token);
   if (!raw) return null;
   try {
     var sess = JSON.parse(raw);
     if (sess.expires < new Date().getTime()) {
-      CacheService.getScriptCache().remove('sess_' + token);
+      props.deleteProperty('sess_' + token);
+      return null;
+    }
+    // Si el usuario fue desactivado (o borrado) después de haber iniciado
+    // sesión, esto lo saca al toque en el próximo pedido — antes solo se
+    // revisaba "activo" al momento de loguearse, así que desactivar a
+    // alguien no le cortaba el acceso hasta que la sesión venciera sola.
+    if (!isUserActiveById(sess.userId)) {
+      props.deleteProperty('sess_' + token);
       return null;
     }
     return sess;
   } catch(e) { return null; }
+}
+
+// Recorre las propiedades de sesión (prefijo 'sess_') y borra las que ya
+// vencieron. Se llama en cada login — PropertiesService tiene un tope de
+// cantidad de propiedades guardadas (compartido con el resto de la config
+// del script, como SPREADSHEET_ID), y como las sesiones ahora duran 10
+// años en vez de expirar solas, sin esto se irían acumulando para siempre.
+function cleanupExpiredSessions() {
+  var props = PropertiesService.getScriptProperties();
+  var all = props.getProperties();
+  var now = new Date().getTime();
+  Object.keys(all).forEach(function(key) {
+    if (key.indexOf('sess_') !== 0) return;
+    try {
+      var sess = JSON.parse(all[key]);
+      if (sess.expires < now) props.deleteProperty(key);
+    } catch (e) { props.deleteProperty(key); } // valor corrupto: se descarta
+  });
+}
+
+// true si el usuario sigue existiendo y activo en la hoja Usuarios.
+function isUserActiveById(userId) {
+  var ss = getSpreadsheet();
+  if (!ss) return false;
+  var sheet = ss.getSheetByName(USERS_SHEET_NAME);
+  if (!sheet || sheet.getLastRow() <= 1) return false;
+  var data = sheet.getDataRange().getValues();
+  for (var i = 1; i < data.length; i++) {
+    if (String(data[i][0]) === String(userId)) {
+      return String(data[i][5]).toLowerCase() === 'true';
+    }
+  }
+  return false; // usuario borrado
 }
 
 function createInitialAdmin(username, password) {
