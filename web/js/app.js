@@ -2283,14 +2283,7 @@
     showToast('Exportados ' + rows.length + ' registros', 'success');
   }
 
-  // Mismo mecanismo que exportReportPDF() (Reportes): arma el HTML en
-  // #print-area con las clases pdf-* (ver @media print en styles.css) y
-  // dispara window.print() — el usuario elige "Guardar como PDF" en el
-  // diálogo de impresión, no se genera un blob de PDF directamente.
-  function exportInformesToPDF() {
-    var rows = getFilteredSortedInformes();
-    if (!rows.length) { showToast('No hay registros para exportar', 'error'); return; }
-
+  function buildInformesPdfHtml(rows) {
     var headerHtml =
       '<div class="pdf-header">' +
         '<div class="pdf-title">LA COSTA S.R.L · Informes de visitas</div>' +
@@ -2325,18 +2318,60 @@
     });
     tableHtml += '</tbody></table>';
 
-    var html = headerHtml + kpisHtml +
+    return headerHtml + kpisHtml +
       '<div class="pdf-section"><div class="pdf-section-title">Visitas (' + rows.length + ')</div>' + tableHtml + '</div>';
+  }
 
-    var printArea = document.getElementById('print-area');
-    printArea.innerHTML = html;
-
-    function onAfterPrint() {
-      printArea.innerHTML = '';
-      window.removeEventListener('afterprint', onAfterPrint);
+  // Genera el PDF directamente (jsPDF + html2canvas) y lo descarga, en vez de
+  // pasar por window.print(): en varios navegadores de Android el diálogo de
+  // impresión no respeta @media print y el preview sale en blanco. Se renderiza
+  // el mismo HTML/CSS (clases pdf-*, ver .pdf-doc en styles.css) en un
+  // contenedor fuera de pantalla, del ancho de referencia RENDER_WIDTH_PX, y
+  // jsPDF lo escala a los 190mm de contenido de una página A4 (210mm - 2×10mm
+  // de margen), paginando automáticamente si no entra en una sola hoja.
+  function exportInformesToPDF() {
+    var rows = getFilteredSortedInformes();
+    if (!rows.length) { showToast('No hay registros para exportar', 'error'); return; }
+    if (!window.jspdf || !window.jspdf.jsPDF || typeof window.html2canvas === 'undefined') {
+      showToast('Librería PDF no cargada. Verificá tu conexión a internet.', 'error');
+      return;
     }
-    window.addEventListener('afterprint', onAfterPrint);
-    setTimeout(function() { window.print(); }, 50);
+
+    var RENDER_WIDTH_PX = 750;
+    var container = document.createElement('div');
+    container.className = 'pdf-doc';
+    container.style.cssText = 'position:fixed;left:-10000px;top:0;width:' + RENDER_WIDTH_PX + 'px;padding:16px;box-sizing:border-box;';
+    container.innerHTML = buildInformesPdfHtml(rows);
+    document.body.appendChild(container);
+
+    showToast('Generando PDF...', 'success');
+
+    var ts = new Date();
+    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+    var fname = 'informes_' + ts.getFullYear() + pad(ts.getMonth()+1) + pad(ts.getDate()) +
+                '_' + pad(ts.getHours()) + pad(ts.getMinutes()) + '.pdf';
+
+    function cleanup() {
+      if (container.parentNode) container.parentNode.removeChild(container);
+    }
+
+    try {
+      var pdf = new window.jspdf.jsPDF('p', 'mm', 'a4');
+      pdf.html(container, {
+        x: 10, y: 10,
+        width: 190,
+        windowWidth: RENDER_WIDTH_PX,
+        autoPaging: 'text',
+        callback: function(doc) {
+          cleanup();
+          doc.save(fname);
+          showToast('PDF descargado', 'success');
+        }
+      });
+    } catch (err) {
+      cleanup();
+      showToast('Error al generar el PDF: ' + (err && err.message ? err.message : 'desconocido'), 'error');
+    }
   }
 
   function applyFilters() {
