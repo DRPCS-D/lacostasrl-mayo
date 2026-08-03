@@ -14,7 +14,7 @@
 // notaban. Subir este número en cada deploy (igual que APP_VERSION en
 // js/version.js — son dos números independientes, no hace falta que
 // coincidan, pero conviene subir los dos juntos para no confundirse).
-const CACHE_VERSION = 'v68';
+const CACHE_VERSION = 'v69';
 const CACHE_NAME = 'pedidos-lacosta-' + CACHE_VERSION;
 const APP_SHELL = [
   './',

@@ -2376,7 +2376,14 @@
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
         ctx.drawImage(canvas, 0, i * pageHeightPx, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
-        pdf.addImage(sliceCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', marginMm, marginMm, contentWidthMm, sliceHeight / pxPerMm);
+        // PNG, no JPEG: el JPEG que devuelve canvas.toDataURL() en algunos
+        // navegadores trae variantes (progresivo, etc.) que el parser propio
+        // de jsPDF no entiende bien — el PDF queda con una imagen que Adobe
+        // rechaza directamente (error) y que visores más permisivos (MuPDF,
+        // el motor de impresión de Windows) simplemente no dibujan (blanco).
+        // Confirmado extrayendo la imagen embebida de un PDF de prueba y
+        // decodificándola aparte. PNG es además más nítido para texto/tablas.
+        pdf.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', marginMm, marginMm, contentWidthMm, sliceHeight / pxPerMm);
       }
 
       cleanup();
