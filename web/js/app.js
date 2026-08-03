@@ -57,6 +57,7 @@
   var clientesMap = null;             // instancia Leaflet del mapa de clientes, se crea una sola vez
   var clientesClusterGroup = null;    // agrupa markers cercanos según el zoom
   var pendingClienteMapFocusCodigo = null; // "Ver en el mapa": código a enfocar en el próximo render
+  var mcSearchClienteCodigo = ''; // buscador de Mapa de clientes — respaldo del autocomplete genérico, se limpia apenas se elige algo (ver clienteACContexts['mc-search-cliente'])
   var informesCurrentTab = 'nuevo-informe';
   var informesCurrentPage = 1;
   var INFORMES_PAGE_SIZE = 10;
@@ -3736,6 +3737,32 @@
       getCodigo: function() { return selectedEditInformeClienteCodigo; },
       setCodigo: function(v) { selectedEditInformeClienteCodigo = v; },
       filtered: [], activeIdx: -1
+    },
+    // Buscador de Mapa de clientes: a diferencia de los otros, no deja el
+    // cliente "elegido" trabado en el input (no hay nada que guardar acá) —
+    // apenas se selecciona uno, enfoca el mapa (o avisa si no tiene
+    // ubicación) y el propio onSelect limpia el input para la próxima búsqueda.
+    'mc-search-cliente': {
+      badgeId: null,
+      suggestionsId: 'mc-search-cliente-suggestions',
+      ciudadFieldId: null,
+      clearBtnId: null,
+      getCodigo: function() { return mcSearchClienteCodigo; },
+      setCodigo: function(v) { mcSearchClienteCodigo = v; },
+      onSelect: function(c) {
+        if (!c) return;
+        var lat = parseFloat(c.lat), lng = parseFloat(c.lng);
+        if (isFinite(lat) && isFinite(lng)) {
+          pendingClienteMapFocusCodigo = String(c.codigo);
+          if (currentSection === 'mapa-clientes') renderClientesMap();
+        } else {
+          showToast('"' + c.razonSocial + '" no tiene ubicación guardada todavía.', 'error');
+        }
+        clearClienteSelection('mc-search-cliente');
+        var input = document.getElementById('mc-search-cliente');
+        if (input) { input.value = ''; input.classList.remove('filled'); }
+      },
+      filtered: [], activeIdx: -1
     }
   };
 
@@ -3905,6 +3932,7 @@
     bindClienteAutocomplete('e-cliente');
     bindClienteAutocomplete('if-cliente');
     bindClienteAutocomplete('ie-cliente');
+    bindClienteAutocomplete('mc-search-cliente');
   })();
 
   // ────────────────────────────────────────────
