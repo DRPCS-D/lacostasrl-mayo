@@ -578,6 +578,12 @@
     }
     .leaflet-popup-content { font-size: 0.82rem; line-height: 1.5; }
     .leaflet-popup-content b { color: var(--primary); }
+    .popup-directions-btn {
+      display: inline-block; margin-top: 6px; padding: 5px 10px;
+      background: var(--primary); color: var(--white); border-radius: 5px;
+      font-size: 0.78rem; font-weight: 600; text-decoration: none;
+    }
+    .popup-directions-btn:hover { background: var(--primary-dark); }
     /* Marcador circular con la foto del vendedor (o su inicial si no tiene) */
     .informe-marker-wrap { background: transparent; border: none; position: relative; }
     .informe-marker {

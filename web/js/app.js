@@ -4813,10 +4813,14 @@
     var focusMarker = null;
     rows.forEach(function(c) {
       var lat = parseFloat(c.lat), lng = parseFloat(c.lng);
+      // destination=lat,lng sin origin: Google Maps usa la ubicación actual
+      // del que abre el link como punto de partida y traza la ruta solo.
+      var directionsUrl = 'https://www.google.com/maps/dir/?api=1&destination=' + lat + ',' + lng;
       var popup = '<b>' + esc(c.razonSocial) + '</b>' +
         (c.nombreFantasia ? ' <span style="color:var(--gray-500)">(' + esc(c.nombreFantasia) + ')</span>' : '') +
         '<br>Código: ' + esc(c.codigo) +
-        (c.ciudad ? '<br>' + esc(c.ciudad) : '') + (c.zona ? ' · ' + esc(c.zona) : '');
+        (c.ciudad ? '<br>' + esc(c.ciudad) : '') + (c.zona ? ' · ' + esc(c.zona) : '') +
+        '<br><a href="' + directionsUrl + '" target="_blank" rel="noopener" class="popup-directions-btn">Cómo llegar</a>';
       var marker = L.marker([lat, lng]).bindPopup(popup);
       marker._clienteCodigo = c.codigo;
       clientesClusterGroup.addLayer(marker);
