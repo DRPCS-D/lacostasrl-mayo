@@ -2283,6 +2283,62 @@
     showToast('Exportados ' + rows.length + ' registros', 'success');
   }
 
+  // Mismo mecanismo que exportReportPDF() (Reportes): arma el HTML en
+  // #print-area con las clases pdf-* (ver @media print en styles.css) y
+  // dispara window.print() — el usuario elige "Guardar como PDF" en el
+  // diálogo de impresión, no se genera un blob de PDF directamente.
+  function exportInformesToPDF() {
+    var rows = getFilteredSortedInformes();
+    if (!rows.length) { showToast('No hay registros para exportar', 'error'); return; }
+
+    var headerHtml =
+      '<div class="pdf-header">' +
+        '<div class="pdf-title">LA COSTA S.R.L · Informes de visitas</div>' +
+        '<div class="pdf-meta">' +
+          '<b>Generado por:</b> ' + esc(authUsername || '') +
+          ' &nbsp;·&nbsp; ' + formatDateTimeES(new Date()) +
+        '</div>' +
+      '</div>';
+
+    var kpisHtml =
+      '<div class="pdf-kpis">' +
+        '<div class="pdf-kpi"><div class="pdf-kpi-label">Visitas</div><div class="pdf-kpi-value">' + rows.length + '</div></div>' +
+      '</div>';
+
+    var tableHtml = '<table class="pdf-table"><thead><tr>' +
+      '<th style="width:70px">Fecha</th>' +
+      '<th>Cliente</th>' +
+      '<th style="width:90px">Ciudad</th>' +
+      '<th style="width:80px">Zona</th>' +
+      '<th>Comentario</th>' +
+      '<th style="width:90px">Usuario</th>' +
+    '</tr></thead><tbody>';
+    rows.forEach(function(r) {
+      tableHtml += '<tr>' +
+        '<td>' + esc(r['Fecha']) + '</td>' +
+        '<td>' + esc(r['Cliente']) + '</td>' +
+        '<td>' + esc(r['Ciudad']) + '</td>' +
+        '<td>' + esc(r['Zona']) + '</td>' +
+        '<td>' + esc(r['Comentario']) + '</td>' +
+        '<td>' + esc(r['Usuario']) + '</td>' +
+      '</tr>';
+    });
+    tableHtml += '</tbody></table>';
+
+    var html = headerHtml + kpisHtml +
+      '<div class="pdf-section"><div class="pdf-section-title">Visitas (' + rows.length + ')</div>' + tableHtml + '</div>';
+
+    var printArea = document.getElementById('print-area');
+    printArea.innerHTML = html;
+
+    function onAfterPrint() {
+      printArea.innerHTML = '';
+      window.removeEventListener('afterprint', onAfterPrint);
+    }
+    window.addEventListener('afterprint', onAfterPrint);
+    setTimeout(function() { window.print(); }, 50);
+  }
+
   function applyFilters() {
     saveFilterState();
     var filtered = getFilteredSortedRecords();
