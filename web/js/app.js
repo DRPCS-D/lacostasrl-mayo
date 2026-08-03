@@ -2283,156 +2283,81 @@
     showToast('Exportados ' + rows.length + ' registros', 'success');
   }
 
-  function buildInformesPdfHtml(rows) {
-    var headerHtml =
-      '<div class="pdf-header">' +
-        '<div class="pdf-title">LA COSTA S.R.L · Informes de visitas</div>' +
-        '<div class="pdf-meta">' +
-          '<b>Generado por:</b> ' + esc(authUsername || '') +
-          ' &nbsp;·&nbsp; ' + formatDateTimeES(new Date()) +
-        '</div>' +
-      '</div>';
-
-    var kpisHtml =
-      '<div class="pdf-kpis">' +
-        '<div class="pdf-kpi"><div class="pdf-kpi-label">Visitas</div><div class="pdf-kpi-value">' + rows.length + '</div></div>' +
-      '</div>';
-
-    // Anchos fijos en todas las columnas salvo Comentario: con table-layout:fixed
-    // (ver .pdf-doc table.pdf-table en styles.css) el resto del ancho de la
-    // tabla queda para la única columna sin width, que es la que necesita
-    // espacio real para hacer salto de línea en vez de desbordar.
-    var tableHtml = '<table class="pdf-table"><thead><tr>' +
-      '<th style="width:85px">Fecha</th>' +
-      '<th style="width:140px">Cliente</th>' +
-      '<th style="width:90px">Ciudad</th>' +
-      '<th style="width:70px">Zona</th>' +
-      '<th>Comentario</th>' +
-      '<th style="width:80px">Usuario</th>' +
-    '</tr></thead><tbody>';
-    rows.forEach(function(r) {
-      tableHtml += '<tr>' +
-        '<td>' + esc(r['Fecha']) + '</td>' +
-        '<td>' + esc(r['Cliente']) + '</td>' +
-        '<td>' + esc(r['Ciudad']) + '</td>' +
-        '<td>' + esc(r['Zona']) + '</td>' +
-        '<td>' + esc(r['Comentario']) + '</td>' +
-        '<td>' + esc(r['Usuario']) + '</td>' +
-      '</tr>';
-    });
-    tableHtml += '</tbody></table>';
-
-    return headerHtml + kpisHtml +
-      '<div class="pdf-section"><div class="pdf-section-title">Visitas (' + rows.length + ')</div>' + tableHtml + '</div>';
-  }
-
-  // Genera el PDF directamente y lo descarga, en vez de pasar por
-  // window.print(): en varios navegadores de Android el diálogo de impresión
-  // no respeta @media print y el preview sale en blanco. Se renderiza el
-  // mismo HTML/CSS (clases pdf-*, ver .pdf-doc en styles.css) en un
-  // contenedor fuera de pantalla, se rasteriza con html2canvas y esa imagen
-  // se va pegando en páginas A4 con jsPDF (pdf.addImage), cortando en tantas
-  // páginas como haga falta si no entra en una sola hoja.
-  //
-  // OJO: NO se usa jsPDF.html() (aunque hace exactamente esto "solo") porque
-  // arma un iframe propio para clonar el nodo y ese iframe no hereda el
-  // <link> a css/styles.css de la página — el resultado salía sin ningún
-  // estilo aplicado (en la práctica, una página en blanco). Llamando a
-  // html2canvas() nosotros mismos sobre el nodo real de la página sí toma
-  // los estilos ya calculados.
+  // PDF con texto real (vectorial), no una imagen rasterizada de la pantalla:
+  // pdf.autoTable() dibuja cada celda como texto de verdad con jsPDF, así que
+  // el archivo pesa órdenes de magnitud menos que renderizar con html2canvas
+  // y el texto queda seleccionable/copiable/buscable. autoTable además maneja
+  // solo el salto de página entre filas (nunca corta una fila al medio) y
+  // repite el encabezado de la tabla en cada hoja nueva.
   function exportInformesToPDF() {
     var rows = getFilteredSortedInformes();
     if (!rows.length) { showToast('No hay registros para exportar', 'error'); return; }
-    if (!window.jspdf || !window.jspdf.jsPDF || typeof window.html2canvas === 'undefined') {
+    if (!window.jspdf || !window.jspdf.jsPDF) {
       showToast('Librería PDF no cargada. Verificá tu conexión a internet.', 'error');
       return;
     }
 
-    var RENDER_WIDTH_PX = 750;
-    var container = document.createElement('div');
-    container.className = 'pdf-doc';
-    container.style.cssText = 'position:fixed;left:-10000px;top:0;width:' + RENDER_WIDTH_PX + 'px;padding:16px;box-sizing:border-box;';
-    container.innerHTML = buildInformesPdfHtml(rows);
-    document.body.appendChild(container);
-
-    showToast('Generando PDF...', 'success');
-
-    function cleanup() {
-      if (container.parentNode) container.parentNode.removeChild(container);
+    var pdf = new window.jspdf.jsPDF('p', 'mm', 'a4');
+    if (typeof pdf.autoTable !== 'function') {
+      showToast('Librería PDF no cargada. Verificá tu conexión a internet.', 'error');
+      return;
     }
 
-    // Bordes inferiores de cada fila de la tabla (en px CSS, relativos al
-    // propio contenedor — está en position:fixed;top:0, así que su borde
-    // superior coincide con y=0 del viewport y no hace falta restar nada),
-    // para poder cortar de página en página justo en un borde de fila y no
-    // al medio de una fila (que se ve horrible: la mitad de arriba en una
-    // hoja, la mitad de abajo en la siguiente).
-    var rowBottomsCss = Array.prototype.map.call(container.querySelectorAll('table.pdf-table tr'), function(tr) {
-      return tr.getBoundingClientRect().bottom;
-    });
+    var marginMm = 10;
+    var primary = [138, 27, 26]; // #8A1B1A
 
-    window.html2canvas(container, { backgroundColor: '#ffffff', scale: 2 }).then(function(canvas) {
-      var pdf = new window.jspdf.jsPDF('p', 'mm', 'a4');
-      var marginMm = 10;
-      var contentWidthMm = 210 - marginMm * 2;
-      var contentHeightMm = 297 - marginMm * 2;
-      var pxPerMm = canvas.width / contentWidthMm;
-      var pageHeightPx = Math.floor(contentHeightMm * pxPerMm);
-      var scale = canvas.width / container.getBoundingClientRect().width;
-      var rowBreaks = rowBottomsCss.map(function(y) { return y * scale; }).sort(function(a, b) { return a - b; });
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(16);
+    pdf.setTextColor(primary[0], primary[1], primary[2]);
+    pdf.text('LA COSTA S.R.L · Informes de visitas', marginMm, 18);
 
-      // Arma los rangos [y0, y1) de cada página: el límite "ideal" es
-      // currentY + pageHeightPx, pero si hay un borde de fila un poco antes
-      // se corta ahí en vez de a mitad de fila. Si ninguna fila entra
-      // completa en una página (una fila individual más alta que una hoja
-      // A4 — comentario larguísimo) no queda otra que cortarla igual.
-      var pageRanges = [];
-      var currentY = 0;
-      while (currentY < canvas.height) {
-        var idealEnd = currentY + pageHeightPx;
-        var sliceEnd = canvas.height;
-        if (idealEnd < canvas.height) {
-          var bestBreak = null;
-          for (var b = 0; b < rowBreaks.length; b++) {
-            if (rowBreaks[b] > currentY && rowBreaks[b] <= idealEnd) bestBreak = rowBreaks[b];
-          }
-          sliceEnd = bestBreak || idealEnd;
-        }
-        pageRanges.push([currentY, sliceEnd]);
-        currentY = sliceEnd;
+    pdf.setDrawColor(primary[0], primary[1], primary[2]);
+    pdf.setLineWidth(0.6);
+    pdf.line(marginMm, 21, 210 - marginMm, 21);
+
+    pdf.setFont('helvetica', 'normal');
+    pdf.setFontSize(9);
+    pdf.setTextColor(60, 60, 60);
+    pdf.text('Generado por: ' + (authUsername || '') + '   ·   ' + formatDateTimeES(new Date()), marginMm, 27);
+
+    pdf.setFontSize(8);
+    pdf.setTextColor(100, 100, 100);
+    pdf.text('VISITAS', marginMm, 35);
+    pdf.setFont('helvetica', 'bold');
+    pdf.setFontSize(13);
+    pdf.setTextColor(primary[0], primary[1], primary[2]);
+    pdf.text(String(rows.length), marginMm, 41);
+
+    pdf.autoTable({
+      startY: 46,
+      margin: { left: marginMm, right: marginMm },
+      // 'avoid': si una fila no entra completa en lo que queda de la página,
+      // se manda entera a la página siguiente en vez de partirla al medio
+      // (el default 'auto' de autoTable sí la parte).
+      rowPageBreak: 'avoid',
+      head: [['Fecha', 'Cliente', 'Ciudad', 'Zona', 'Comentario', 'Usuario']],
+      body: rows.map(function(r) {
+        return [r['Fecha'] || '', r['Cliente'] || '', r['Ciudad'] || '', r['Zona'] || '', r['Comentario'] || '', r['Usuario'] || ''];
+      }),
+      styles: { font: 'helvetica', fontSize: 8.5, cellPadding: 2, overflow: 'linebreak', valign: 'top' },
+      headStyles: { fillColor: primary, textColor: 255, fontStyle: 'bold' },
+      alternateRowStyles: { fillColor: [250, 250, 250] },
+      columnStyles: {
+        0: { cellWidth: 20 },
+        1: { cellWidth: 32 },
+        2: { cellWidth: 26 },
+        3: { cellWidth: 18 },
+        4: { cellWidth: 'auto' },
+        5: { cellWidth: 22 }
       }
-
-      pageRanges.forEach(function(range, i) {
-        if (i > 0) pdf.addPage();
-        var sliceHeight = range[1] - range[0];
-        var sliceCanvas = document.createElement('canvas');
-        sliceCanvas.width = canvas.width;
-        sliceCanvas.height = sliceHeight;
-        var ctx = sliceCanvas.getContext('2d');
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-        ctx.drawImage(canvas, 0, range[0], canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
-        // PNG, no JPEG: el JPEG que devuelve canvas.toDataURL() en algunos
-        // navegadores trae variantes (progresivo, etc.) que el parser propio
-        // de jsPDF no entiende bien — el PDF queda con una imagen que Adobe
-        // rechaza directamente (error) y que visores más permisivos (MuPDF,
-        // el motor de impresión de Windows) simplemente no dibujan (blanco).
-        // Confirmado extrayendo la imagen embebida de un PDF de prueba y
-        // decodificándola aparte. PNG es además más nítido para texto/tablas.
-        pdf.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', marginMm, marginMm, contentWidthMm, sliceHeight / pxPerMm);
-      });
-
-      cleanup();
-      var ts = new Date();
-      var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
-      var fname = 'informes_' + ts.getFullYear() + pad(ts.getMonth()+1) + pad(ts.getDate()) +
-                  '_' + pad(ts.getHours()) + pad(ts.getMinutes()) + '.pdf';
-      pdf.save(fname);
-      showToast('PDF descargado', 'success');
-    }).catch(function(err) {
-      cleanup();
-      showToast('Error al generar el PDF: ' + (err && err.message ? err.message : 'desconocido'), 'error');
     });
+
+    var ts = new Date();
+    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+    var fname = 'informes_' + ts.getFullYear() + pad(ts.getMonth()+1) + pad(ts.getDate()) +
+                '_' + pad(ts.getHours()) + pad(ts.getMinutes()) + '.pdf';
+    pdf.save(fname);
+    showToast('PDF descargado', 'success');
   }
 
   function applyFilters() {
