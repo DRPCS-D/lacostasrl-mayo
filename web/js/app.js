@@ -2361,6 +2361,16 @@
       if (container.parentNode) container.parentNode.removeChild(container);
     }
 
+    // Bordes inferiores de cada fila de la tabla (en px CSS, relativos al
+    // propio contenedor — está en position:fixed;top:0, así que su borde
+    // superior coincide con y=0 del viewport y no hace falta restar nada),
+    // para poder cortar de página en página justo en un borde de fila y no
+    // al medio de una fila (que se ve horrible: la mitad de arriba en una
+    // hoja, la mitad de abajo en la siguiente).
+    var rowBottomsCss = Array.prototype.map.call(container.querySelectorAll('table.pdf-table tr'), function(tr) {
+      return tr.getBoundingClientRect().bottom;
+    });
+
     window.html2canvas(container, { backgroundColor: '#ffffff', scale: 2 }).then(function(canvas) {
       var pdf = new window.jspdf.jsPDF('p', 'mm', 'a4');
       var marginMm = 10;
@@ -2368,18 +2378,40 @@
       var contentHeightMm = 297 - marginMm * 2;
       var pxPerMm = canvas.width / contentWidthMm;
       var pageHeightPx = Math.floor(contentHeightMm * pxPerMm);
-      var totalPages = Math.max(1, Math.ceil(canvas.height / pageHeightPx));
+      var scale = canvas.width / container.getBoundingClientRect().width;
+      var rowBreaks = rowBottomsCss.map(function(y) { return y * scale; }).sort(function(a, b) { return a - b; });
 
-      for (var i = 0; i < totalPages; i++) {
+      // Arma los rangos [y0, y1) de cada página: el límite "ideal" es
+      // currentY + pageHeightPx, pero si hay un borde de fila un poco antes
+      // se corta ahí en vez de a mitad de fila. Si ninguna fila entra
+      // completa en una página (una fila individual más alta que una hoja
+      // A4 — comentario larguísimo) no queda otra que cortarla igual.
+      var pageRanges = [];
+      var currentY = 0;
+      while (currentY < canvas.height) {
+        var idealEnd = currentY + pageHeightPx;
+        var sliceEnd = canvas.height;
+        if (idealEnd < canvas.height) {
+          var bestBreak = null;
+          for (var b = 0; b < rowBreaks.length; b++) {
+            if (rowBreaks[b] > currentY && rowBreaks[b] <= idealEnd) bestBreak = rowBreaks[b];
+          }
+          sliceEnd = bestBreak || idealEnd;
+        }
+        pageRanges.push([currentY, sliceEnd]);
+        currentY = sliceEnd;
+      }
+
+      pageRanges.forEach(function(range, i) {
         if (i > 0) pdf.addPage();
-        var sliceHeight = Math.min(pageHeightPx, canvas.height - i * pageHeightPx);
+        var sliceHeight = range[1] - range[0];
         var sliceCanvas = document.createElement('canvas');
         sliceCanvas.width = canvas.width;
         sliceCanvas.height = sliceHeight;
         var ctx = sliceCanvas.getContext('2d');
         ctx.fillStyle = '#ffffff';
         ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
-        ctx.drawImage(canvas, 0, i * pageHeightPx, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+        ctx.drawImage(canvas, 0, range[0], canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
         // PNG, no JPEG: el JPEG que devuelve canvas.toDataURL() en algunos
         // navegadores trae variantes (progresivo, etc.) que el parser propio
         // de jsPDF no entiende bien — el PDF queda con una imagen que Adobe
@@ -2388,7 +2420,7 @@
         // Confirmado extrayendo la imagen embebida de un PDF de prueba y
         // decodificándola aparte. PNG es además más nítido para texto/tablas.
         pdf.addImage(sliceCanvas.toDataURL('image/png'), 'PNG', marginMm, marginMm, contentWidthMm, sliceHeight / pxPerMm);
-      }
+      });
 
       cleanup();
       var ts = new Date();
