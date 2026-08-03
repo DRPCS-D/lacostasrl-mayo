@@ -1496,9 +1496,18 @@
     }
     .pdf-doc .pdf-kpi-label { font-size: 8pt; color: #666; text-transform: uppercase; letter-spacing: 0.3px; }
     .pdf-doc .pdf-kpi-value { font-size: 13pt; font-weight: 700; color: #8A1B1A; margin-top: 2px; }
-    .pdf-doc table.pdf-table { width: 100%; border-collapse: collapse; font-size: 9pt; }
+    /* table-layout:fixed para que las columnas respeten el width del <th> y el
+       texto largo de Comentario haga salto de línea en vez de desbordar por
+       encima de la columna siguiente (ver exportInformesToPDF). */
+    .pdf-doc table.pdf-table { width: 100%; border-collapse: collapse; font-size: 9pt; table-layout: fixed; }
     .pdf-doc table.pdf-table th, .pdf-doc table.pdf-table td {
       border-bottom: 1px solid #e5e5e5; padding: 4px 6px; text-align: left;
+      /* Pisa el "td { white-space:nowrap; overflow:hidden; max-width:160px;
+         text-overflow:ellipsis }" genérico de más arriba (para las tablas
+         normales de la app) — acá el texto largo de Comentario tiene que
+         hacer salto de línea, no cortarse con "…". */
+      white-space: normal; overflow: visible; max-width: none; text-overflow: clip;
+      word-wrap: break-word; overflow-wrap: break-word;
     }
     .pdf-doc table.pdf-table th { background: #8A1B1A; color: #fff; font-weight: 600; font-size: 8.5pt; }
     .pdf-doc table.pdf-table td.num { text-align: right; font-variant-numeric: tabular-nums; }

@@ -2298,13 +2298,17 @@
         '<div class="pdf-kpi"><div class="pdf-kpi-label">Visitas</div><div class="pdf-kpi-value">' + rows.length + '</div></div>' +
       '</div>';
 
+    // Anchos fijos en todas las columnas salvo Comentario: con table-layout:fixed
+    // (ver .pdf-doc table.pdf-table en styles.css) el resto del ancho de la
+    // tabla queda para la única columna sin width, que es la que necesita
+    // espacio real para hacer salto de línea en vez de desbordar.
     var tableHtml = '<table class="pdf-table"><thead><tr>' +
-      '<th style="width:70px">Fecha</th>' +
-      '<th>Cliente</th>' +
+      '<th style="width:85px">Fecha</th>' +
+      '<th style="width:140px">Cliente</th>' +
       '<th style="width:90px">Ciudad</th>' +
-      '<th style="width:80px">Zona</th>' +
+      '<th style="width:70px">Zona</th>' +
       '<th>Comentario</th>' +
-      '<th style="width:90px">Usuario</th>' +
+      '<th style="width:80px">Usuario</th>' +
     '</tr></thead><tbody>';
     rows.forEach(function(r) {
       tableHtml += '<tr>' +
