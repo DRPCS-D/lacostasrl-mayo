@@ -461,6 +461,7 @@
           if (pb) pb.classList.remove('active');
         });
       document.getElementById('panel-clientes').classList.add('active');
+      relocateClienteFiltersWrap('clientes');
       loadClientes();
     } else if (name === 'mapa-clientes') {
       tabBar.style.display = 'none';
@@ -471,6 +472,7 @@
           if (pb) pb.classList.remove('active');
         });
       document.getElementById('panel-mapa-clientes').classList.add('active');
+      relocateClienteFiltersWrap('mapa-clientes');
       loadClientes();
     } else if (name === 'reportes') {
       tabBar.style.display = 'none';
@@ -1848,6 +1850,17 @@
     }
   }
   // ── Filtros de Clientes (Ciudad / Zona) ──
+  // Clientes y Mapa de clientes comparten un único filters-wrap (Ciudad/Zona):
+  // se reubica el mismo nodo del DOM entre ambos paneles según cuál esté
+  // activo, igual que relocateInformeFiltersWrap() con Informes/Mapa de visitas.
+  function relocateClienteFiltersWrap(name) {
+    var wrap = document.getElementById('filters-wrap-clientes');
+    if (!wrap) return;
+    var target = name === 'mapa-clientes'
+      ? document.getElementById('filters-anchor-mapa-clientes')
+      : document.getElementById('search-clientes').closest('.search-row');
+    if (target && wrap.parentNode !== target) target.appendChild(wrap);
+  }
   function toggleClienteFiltersPanel(e) {
     if (e && e.stopPropagation) e.stopPropagation();
     var panel = document.getElementById('filters-panel-clientes');
@@ -1869,8 +1882,10 @@
       updateSdropLabel(sdrop);
     });
     document.getElementById('search-clientes').value = '';
+    pendingClienteMapFocusCodigo = null; // "Todos": salir del foco de un cliente puntual en el mapa
     updateClienteFiltersCount();
     renderClientes();
+    if (currentSection === 'mapa-clientes') renderClientesMap();
   }
   function updateClienteFiltersCount() {
     var n = 0;
@@ -1975,8 +1990,10 @@
   // Dispara el recálculo correcto (Pedidos o Clientes) según a qué panel pertenece el sdrop
   function onSdropFilterChanged(sdrop) {
     if (sdrop.closest('#filters-panel-clientes')) {
+      pendingClienteMapFocusCodigo = null; // filtrar a mano vuelve a la vista general del mapa
       updateClienteFiltersCount();
       renderClientes();
+      if (currentSection === 'mapa-clientes') renderClientesMap();
     } else if (sdrop.closest('#if-filters-panel')) {
       updateInformeFiltersCount();
       onInformeFilterChange();
@@ -4598,6 +4615,15 @@
     }, force);
   }
 
+  // El buscador de texto es compartido entre Clientes y Mapa de clientes (mismo
+  // input reubicado). Igual que los sdrops de Ciudad/Zona, hay que refrescar
+  // el mapa también cuando es la sección visible, y salir del foco de un
+  // cliente puntual si el usuario está filtrando a mano.
+  function onClienteSearchInput() {
+    pendingClienteMapFocusCodigo = null;
+    renderClientes();
+    if (currentSection === 'mapa-clientes') renderClientesMap();
+  }
   // Filtra allClients por el buscador de texto + los sdrops de Ciudad/Zona. Compartido entre
   // renderClientes() (tabla) y getClienteViewNavList() (prev/next del modal detalle) para que
   // ambos reflejen exactamente el mismo conjunto filtrado.
