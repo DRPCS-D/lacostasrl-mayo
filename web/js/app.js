@@ -2322,13 +2322,20 @@
       '<div class="pdf-section"><div class="pdf-section-title">Visitas (' + rows.length + ')</div>' + tableHtml + '</div>';
   }
 
-  // Genera el PDF directamente (jsPDF + html2canvas) y lo descarga, en vez de
-  // pasar por window.print(): en varios navegadores de Android el diálogo de
-  // impresión no respeta @media print y el preview sale en blanco. Se renderiza
-  // el mismo HTML/CSS (clases pdf-*, ver .pdf-doc en styles.css) en un
-  // contenedor fuera de pantalla, del ancho de referencia RENDER_WIDTH_PX, y
-  // jsPDF lo escala a los 190mm de contenido de una página A4 (210mm - 2×10mm
-  // de margen), paginando automáticamente si no entra en una sola hoja.
+  // Genera el PDF directamente y lo descarga, en vez de pasar por
+  // window.print(): en varios navegadores de Android el diálogo de impresión
+  // no respeta @media print y el preview sale en blanco. Se renderiza el
+  // mismo HTML/CSS (clases pdf-*, ver .pdf-doc en styles.css) en un
+  // contenedor fuera de pantalla, se rasteriza con html2canvas y esa imagen
+  // se va pegando en páginas A4 con jsPDF (pdf.addImage), cortando en tantas
+  // páginas como haga falta si no entra en una sola hoja.
+  //
+  // OJO: NO se usa jsPDF.html() (aunque hace exactamente esto "solo") porque
+  // arma un iframe propio para clonar el nodo y ese iframe no hereda el
+  // <link> a css/styles.css de la página — el resultado salía sin ningún
+  // estilo aplicado (en la práctica, una página en blanco). Llamando a
+  // html2canvas() nosotros mismos sobre el nodo real de la página sí toma
+  // los estilos ya calculados.
   function exportInformesToPDF() {
     var rows = getFilteredSortedInformes();
     if (!rows.length) { showToast('No hay registros para exportar', 'error'); return; }
@@ -2346,32 +2353,43 @@
 
     showToast('Generando PDF...', 'success');
 
-    var ts = new Date();
-    var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
-    var fname = 'informes_' + ts.getFullYear() + pad(ts.getMonth()+1) + pad(ts.getDate()) +
-                '_' + pad(ts.getHours()) + pad(ts.getMinutes()) + '.pdf';
-
     function cleanup() {
       if (container.parentNode) container.parentNode.removeChild(container);
     }
 
-    try {
+    window.html2canvas(container, { backgroundColor: '#ffffff', scale: 2 }).then(function(canvas) {
       var pdf = new window.jspdf.jsPDF('p', 'mm', 'a4');
-      pdf.html(container, {
-        x: 10, y: 10,
-        width: 190,
-        windowWidth: RENDER_WIDTH_PX,
-        autoPaging: 'text',
-        callback: function(doc) {
-          cleanup();
-          doc.save(fname);
-          showToast('PDF descargado', 'success');
-        }
-      });
-    } catch (err) {
+      var marginMm = 10;
+      var contentWidthMm = 210 - marginMm * 2;
+      var contentHeightMm = 297 - marginMm * 2;
+      var pxPerMm = canvas.width / contentWidthMm;
+      var pageHeightPx = Math.floor(contentHeightMm * pxPerMm);
+      var totalPages = Math.max(1, Math.ceil(canvas.height / pageHeightPx));
+
+      for (var i = 0; i < totalPages; i++) {
+        if (i > 0) pdf.addPage();
+        var sliceHeight = Math.min(pageHeightPx, canvas.height - i * pageHeightPx);
+        var sliceCanvas = document.createElement('canvas');
+        sliceCanvas.width = canvas.width;
+        sliceCanvas.height = sliceHeight;
+        var ctx = sliceCanvas.getContext('2d');
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, sliceCanvas.width, sliceCanvas.height);
+        ctx.drawImage(canvas, 0, i * pageHeightPx, canvas.width, sliceHeight, 0, 0, canvas.width, sliceHeight);
+        pdf.addImage(sliceCanvas.toDataURL('image/jpeg', 0.92), 'JPEG', marginMm, marginMm, contentWidthMm, sliceHeight / pxPerMm);
+      }
+
+      cleanup();
+      var ts = new Date();
+      var pad = function(n) { return n < 10 ? '0' + n : '' + n; };
+      var fname = 'informes_' + ts.getFullYear() + pad(ts.getMonth()+1) + pad(ts.getDate()) +
+                  '_' + pad(ts.getHours()) + pad(ts.getMinutes()) + '.pdf';
+      pdf.save(fname);
+      showToast('PDF descargado', 'success');
+    }).catch(function(err) {
       cleanup();
       showToast('Error al generar el PDF: ' + (err && err.message ? err.message : 'desconocido'), 'error');
-    }
+    });
   }
 
   function applyFilters() {
