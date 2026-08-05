@@ -221,8 +221,9 @@
     header {
       background: var(--primary);
       color: var(--white);
-      padding: 0 16px;
-      height: var(--header-h);
+      padding: env(safe-area-inset-top, 0px) 16px 0;
+      height: calc(var(--header-h) + env(safe-area-inset-top, 0px));
+      box-sizing: border-box;
       display: flex;
       align-items: center;
       justify-content: space-between;
@@ -267,7 +268,7 @@
       border-bottom: 2px solid var(--gray-200);
       display: flex;
       position: sticky;
-      top: var(--header-h);
+      top: calc(var(--header-h) + env(safe-area-inset-top, 0px));
       z-index: 90;
       box-shadow: 0 1px 4px rgba(0,0,0,0.06);
     }
