@@ -39,8 +39,13 @@ function saveInforme(token, data) {
   idCell.setNumberFormat('@').setValue(id);
   bumpRevision('informes');
   // Deja la ubicación del cliente actualizada con la de esta visita (la más
-  // reciente). No debe hacer fallar el guardado del informe si algo sale mal acá.
-  try { updateClientLocation(codigoCliente, lat, lng); } catch (e) {}
+  // reciente), salvo que el usuario haya destildado la opción en el formulario.
+  // Por defecto (flag ausente, ej. clientes viejos en caché) se actualiza.
+  // No debe hacer fallar el guardado del informe si algo sale mal acá.
+  var actualizarUbicacionCliente = !(data && data.actualizarUbicacionCliente === false);
+  if (actualizarUbicacionCliente) {
+    try { updateClientLocation(codigoCliente, lat, lng); } catch (e) {}
+  }
   return { success: true, id: id };
 }
 

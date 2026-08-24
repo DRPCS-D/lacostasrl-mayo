@@ -547,6 +547,12 @@
       outline: none; border-color: var(--primary);
       box-shadow: 0 0 0 3px rgba(138,27,26,0.14);
     }
+    .check-inline {
+      display: flex; align-items: center; gap: 8px;
+      font-size: 0.85rem; font-weight: 400; text-transform: none; letter-spacing: normal;
+      color: var(--gray-700); cursor: pointer; user-select: none;
+    }
+    .check-inline input { cursor: pointer; margin: 0; }
     /* ── Informes: bloque de ubicación ── */
     .location-box {
       display: flex; align-items: center; gap: 10px;

@@ -4057,6 +4057,7 @@
     clearClienteSelection('if-cliente');
     hideClienteSuggestions('if-cliente');
     document.getElementById('if-comentario').value = '';
+    document.getElementById('if-update-cliente-ubicacion').checked = true;
     updateInformeSaveButtonState();
   }
 
@@ -4073,7 +4074,8 @@
       codigoCliente: selectedInformeClienteCodigo,
       comentario: document.getElementById('if-comentario').value.trim(),
       lat: currentInformeLat,
-      lng: currentInformeLng
+      lng: currentInformeLng,
+      actualizarUbicacionCliente: document.getElementById('if-update-cliente-ubicacion').checked
     };
     var btn = document.getElementById('if-btn-save');
     var label = document.getElementById('if-save-label');
