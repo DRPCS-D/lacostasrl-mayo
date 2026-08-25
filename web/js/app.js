@@ -59,6 +59,7 @@
   var pendingClienteMapFocusCodigo = null; // "Ver en el mapa": código a enfocar en el próximo render
   var mcSearchClienteCodigo = ''; // buscador de Mapa de clientes — respaldo del autocomplete genérico, se limpia apenas se elige algo (ver clienteACContexts['mc-search-cliente'])
   var informesCurrentTab = 'nuevo-informe';
+  var clientesCurrentTab = 'clientes';
   var informesCurrentPage = 1;
   var INFORMES_PAGE_SIZE = 10;
   var informeSortState = { column: null, direction: 'asc' };
@@ -196,7 +197,6 @@
     // Pestañas admin: visibles para Admin y AdminL (AdminL en modo lectura)
     document.getElementById('drawer-usuarios').style.display = canSeeAll ? '' : 'none';
     document.getElementById('drawer-clientes').style.display = '';
-    document.getElementById('drawer-mapa-clientes').style.display = '';
     document.getElementById('drawer-reportes').style.display = canSeeAll ? '' : 'none';
     document.getElementById('drawer-informes').style.display = '';
     document.getElementById('home-card-usuarios').style.display = canSeeAll ? '' : 'none';
@@ -390,7 +390,7 @@
   }
 
   // ── Sections (navegación principal desde el drawer) ──
-  var SECTIONS = ['inicio', 'pedidos', 'informes', 'usuarios', 'clientes', 'mapa-clientes', 'reportes'];
+  var SECTIONS = ['inicio', 'pedidos', 'informes', 'usuarios', 'clientes', 'reportes'];
   var currentSection = null;
   // Todos los tab-panel que existen fuera de "Pedidos" (Pedidos tiene los suyos
   // propios manejados por switchTab). Se usa para desactivar todo antes de
@@ -415,10 +415,12 @@
 
     var tabBar = document.getElementById('tab-bar');
     var tabBarInformes = document.getElementById('tab-bar-informes');
+    var tabBarClientes = document.getElementById('tab-bar-clientes');
 
     if (name === 'inicio') {
       tabBar.style.display = 'none';
       tabBarInformes.style.display = 'none';
+      tabBarClientes.style.display = 'none';
       ['nuevo', 'guardados'].concat(NON_PEDIDOS_PANELS.filter(function(t) { return t !== 'inicio'; }))
         .forEach(function(t) {
           var pb = document.getElementById('panel-' + t);
@@ -428,6 +430,7 @@
     } else if (name === 'pedidos') {
       tabBar.style.display = '';
       tabBarInformes.style.display = 'none';
+      tabBarClientes.style.display = 'none';
       NON_PEDIDOS_PANELS.forEach(function(t) {
         var pb = document.getElementById('panel-' + t);
         if (pb) pb.classList.remove('active');
@@ -436,6 +439,7 @@
     } else if (name === 'informes') {
       tabBar.style.display = 'none';
       tabBarInformes.style.display = '';
+      tabBarClientes.style.display = 'none';
       ['nuevo', 'guardados'].concat(NON_PEDIDOS_PANELS.filter(function(t) {
         return t !== 'nuevo-informe' && t !== 'informes' && t !== 'mapa';
       })).forEach(function(t) {
@@ -446,6 +450,7 @@
     } else if (name === 'usuarios') {
       tabBar.style.display = 'none';
       tabBarInformes.style.display = 'none';
+      tabBarClientes.style.display = 'none';
       ['nuevo', 'guardados'].concat(NON_PEDIDOS_PANELS.filter(function(t) { return t !== 'usuarios'; }))
         .forEach(function(t) {
           var pb = document.getElementById('panel-' + t);
@@ -456,28 +461,18 @@
     } else if (name === 'clientes') {
       tabBar.style.display = 'none';
       tabBarInformes.style.display = 'none';
-      ['nuevo', 'guardados'].concat(NON_PEDIDOS_PANELS.filter(function(t) { return t !== 'clientes'; }))
-        .forEach(function(t) {
-          var pb = document.getElementById('panel-' + t);
-          if (pb) pb.classList.remove('active');
-        });
-      document.getElementById('panel-clientes').classList.add('active');
-      relocateClienteFiltersWrap('clientes');
-      loadClientes();
-    } else if (name === 'mapa-clientes') {
-      tabBar.style.display = 'none';
-      tabBarInformes.style.display = 'none';
-      ['nuevo', 'guardados'].concat(NON_PEDIDOS_PANELS.filter(function(t) { return t !== 'mapa-clientes'; }))
-        .forEach(function(t) {
-          var pb = document.getElementById('panel-' + t);
-          if (pb) pb.classList.remove('active');
-        });
-      document.getElementById('panel-mapa-clientes').classList.add('active');
-      relocateClienteFiltersWrap('mapa-clientes');
-      loadClientes();
+      tabBarClientes.style.display = '';
+      ['nuevo', 'guardados'].concat(NON_PEDIDOS_PANELS.filter(function(t) {
+        return t !== 'clientes' && t !== 'mapa-clientes';
+      })).forEach(function(t) {
+        var pb = document.getElementById('panel-' + t);
+        if (pb) pb.classList.remove('active');
+      });
+      switchClientesTab(clientesCurrentTab || 'clientes');
     } else if (name === 'reportes') {
       tabBar.style.display = 'none';
       tabBarInformes.style.display = 'none';
+      tabBarClientes.style.display = 'none';
       ['nuevo', 'guardados'].concat(NON_PEDIDOS_PANELS.filter(function(t) { return t !== 'reportes'; }))
         .forEach(function(t) {
           var pb = document.getElementById('panel-' + t);
@@ -1567,7 +1562,7 @@
           allClients = rows;
           if (visible) {
             renderClientes();
-            if (currentSection === 'mapa-clientes') renderClientesMap(true); // no tocar el zoom/pan del usuario
+            if (clientesCurrentTab === 'mapa-clientes') renderClientesMap(true); // no tocar el zoom/pan del usuario
           }
         } else if (key === 'users') {
           allUsers = rows;
@@ -1886,7 +1881,7 @@
     pendingClienteMapFocusCodigo = null; // "Todos": salir del foco de un cliente puntual en el mapa
     updateClienteFiltersCount();
     renderClientes();
-    if (currentSection === 'mapa-clientes') renderClientesMap();
+    if (clientesCurrentTab === 'mapa-clientes') renderClientesMap();
   }
   function updateClienteFiltersCount() {
     var n = 0;
@@ -1994,7 +1989,7 @@
       pendingClienteMapFocusCodigo = null; // filtrar a mano vuelve a la vista general del mapa
       updateClienteFiltersCount();
       renderClientes();
-      if (currentSection === 'mapa-clientes') renderClientesMap();
+      if (clientesCurrentTab === 'mapa-clientes') renderClientesMap();
     } else if (sdrop.closest('#if-filters-panel')) {
       updateInformeFiltersCount();
       onInformeFilterChange();
@@ -3754,7 +3749,7 @@
         var lat = parseFloat(c.lat), lng = parseFloat(c.lng);
         if (isFinite(lat) && isFinite(lng)) {
           pendingClienteMapFocusCodigo = String(c.codigo);
-          if (currentSection === 'mapa-clientes') renderClientesMap();
+          if (clientesCurrentTab === 'mapa-clientes') renderClientesMap();
         } else {
           showToast('"' + c.razonSocial + '" no tiene ubicación guardada todavía.', 'error');
         }
@@ -3969,6 +3964,31 @@
       // venir de "Ver en mapa") y podía dejar el mapa en un estado raro.
       loadInformes();
     }
+  }
+
+  // Análogo a switchInformeTab: "Clientes" (tabla) y "Mapa" son dos pestañas
+  // de la misma sección, comparten datos (allClients) y el buscador/filtros
+  // (ver relocateClienteFiltersWrap).
+  function switchClientesTab(name) {
+    clientesCurrentTab = name;
+    ['clientes', 'mapa-clientes'].forEach(function(t) {
+      var tb = document.getElementById('tab-' + t);
+      var pb = document.getElementById('panel-' + t);
+      if (tb) tb.classList.toggle('active', t === name);
+      if (pb) pb.classList.toggle('active', t === name);
+    });
+    relocateClienteFiltersWrap(name);
+    window.scrollTo(0, 0);
+    if (document.documentElement) document.documentElement.scrollTop = 0;
+    if (document.body) document.body.scrollTop = 0;
+    loadClientes();
+  }
+
+  // Acceso rápido desde la tarjeta "Mapa de clientes" en Inicio: entra directo
+  // a la sección Clientes con la pestaña Mapa activa.
+  function openMapaClientesFromHome() {
+    clientesCurrentTab = 'mapa-clientes';
+    switchSection('clientes');
   }
 
   // ── Geolocalización (obligatoria para guardar) ──
@@ -4682,18 +4702,18 @@
   // force=true : botón "Actualizar" — ignora la comparación de revisión y
   // siempre trae la tabla completa del backend.
   function loadClientes(force) {
-    // Clientes y Mapa de clientes son dos secciones distintas que comparten los
+    // Clientes y Mapa son dos pestañas de la misma sección que comparten los
     // mismos datos y el mismo botón "Actualizar" — el spinner tiene que ir en
     // la que esté visible en este momento (mismo patrón que loadInformes con
     // Informes/Mapa).
-    var loadingPanel = currentSection === 'mapa-clientes' ? 'panel-mapa-clientes' : 'panel-clientes';
+    var loadingPanel = clientesCurrentTab === 'mapa-clientes' ? 'panel-mapa-clientes' : 'panel-clientes';
     var hadCache = haveTableCache.clients;
     if (hadCache && !force) {
       populateSelectFilter('filter-cliente-ciudad', allClients, 'ciudad', 'Todas las ciudades');
       populateSelectFilter('filter-cliente-zona',   allClients, 'zona',   'Todas las zonas');
       updateClienteFiltersCount();
       renderClientes();
-      if (currentSection === 'mapa-clientes') renderClientesMap();
+      if (clientesCurrentTab === 'mapa-clientes') renderClientesMap();
     }
     if (!hadCache || force) setTableLoading(loadingPanel, true);
     syncTableIfStale('clients', function(rev) {
@@ -4706,7 +4726,7 @@
           populateSelectFilter('filter-cliente-zona',   allClients, 'zona',   'Todas las zonas');
           updateClienteFiltersCount();
           renderClientes();
-          if (currentSection === 'mapa-clientes') renderClientesMap();
+          if (clientesCurrentTab === 'mapa-clientes') renderClientesMap();
           knownRevisions.clients = rev;
           haveTableCache.clients = true;
           saveTableCache('clients', allClients, rev);
@@ -4729,7 +4749,7 @@
   function onClienteSearchInput() {
     pendingClienteMapFocusCodigo = null;
     renderClientes();
-    if (currentSection === 'mapa-clientes') renderClientesMap();
+    if (clientesCurrentTab === 'mapa-clientes') renderClientesMap();
   }
   // Filtra allClients por el buscador de texto + los sdrops de Ciudad/Zona. Compartido entre
   // renderClientes() (tabla) y getClienteViewNavList() (prev/next del modal detalle) para que
@@ -4853,7 +4873,8 @@
     var codigo = String(viewingClienteCodigo);
     closeViewClienteModal();
     pendingClienteMapFocusCodigo = codigo;
-    switchSection('mapa-clientes');
+    clientesCurrentTab = 'mapa-clientes';
+    switchSection('clientes');
   }
 
   function openNewClienteModal() {
