@@ -158,19 +158,46 @@ Al abrir la página por primera vez, si no hay usuarios cargados en la pestaña
   los scripts de CDN (pdf.js, heic2any) — esos siempre van a la red. Esto
   permite que la app abra rápido y offline muestre al menos la interfaz, pero
   igual necesita conexión para cargar/guardar pedidos reales.
+- **El caché se escribe únicamente en el `install`**, con un `addAll()` que es
+  todo-o-nada; el handler de `fetch` nunca hace `cache.put`. Así el caché es
+  siempre una foto coherente de un solo `install`, y no puede quedar con
+  `index.html` de una versión y `app.js` de otra. Antes era
+  stale-while-revalidate por archivo y esa mezcla sí pasaba: dejaba la app
+  clavada en la vista de Pedidos, respondiendo a los clics pero sin cambiar de
+  vista (`getElementById` devolvía `null` y cortaba `launchApp`/`switchSection`
+  por `TypeError`).
 - Los íconos (`web/icons/*.png`) se generan con `node scripts/gen-icons.js`
   (no depende de ImageMagick/sharp, dibuja el PNG a mano). Para cambiar el
   diseño del ícono, editá ese script y volvé a correrlo.
 
 ### Versionado y actualización forzada
 
-`web/js/version.js` define `APP_VERSION`, la única fuente de verdad que usan:
+Hay **dos** números que tienen que moverse juntos:
 
-- `sw.js` (vía `importScripts`) para nombrar el caché (`pedidos-lacosta-vX`) —
-  subir `APP_VERSION` invalida el caché viejo en el próximo `activate`.
-- El drawer, que muestra `vX` al pie del menú lateral.
+| Archivo             | Constante       | Valor        |
+|---------------------|-----------------|--------------|
+| `web/js/version.js` | `APP_VERSION`   | `'79'`       |
+| `web/sw.js`         | `CACHE_VERSION` | `'v79'`      |
 
-**Cada vez que cambie algo en `web/`, subí el número en `web/js/version.js`**
+`APP_VERSION` lo muestra el drawer y lo usa `checkForNewVersion()` para detectar
+código viejo. `CACHE_VERSION` nombra el caché (`pedidos-lacosta-vX`).
+
+`sw.js` **no** lee `version.js` (antes lo hacía con `importScripts` y se sacó):
+necesita el literal adentro, porque el navegador decide si reinstala el service
+worker comparando los *bytes de `sw.js`*. Si `CACHE_VERSION` no cambia, `sw.js`
+queda idéntico, no hay reinstalación, y no corre el `install`/`addAll()` — que
+es el único camino por el que se rearma el caché. Quedó desfasado tres releases
+(`sw.js` en v75 con `APP_VERSION` en 78) y de ahí salió el bug de la vista
+trabada.
+
+`scripts/check-version-sync.js` verifica que `CACHE_VERSION === 'v' + APP_VERSION`
+y **falla el deploy** si no coinciden. Para correrlo a mano:
+
+```bash
+node scripts/check-version-sync.js
+```
+
+**Cada vez que cambie algo en `web/`, subí los dos números**
 antes de pushear. Eso solo no alcanza para que una pestaña ya abierta (o la
 PWA ya instalada) baje los archivos nuevos de inmediato — el navegador recién
 revisa si hay un service worker distinto en su próxima visita o `update()`

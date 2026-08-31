@@ -158,6 +158,25 @@
   // ────────────────────────────────────────────
   // SCREEN MANAGEMENT
   // ────────────────────────────────────────────
+  // Muestra/oculta por id sin explotar si el elemento no está. Red de
+  // seguridad para el caso en que el navegador sirva un app.js y un
+  // index.html de versiones distintas (ver el invariante del caché en sw.js):
+  // ahí getElementById devuelve null y un .style.display directo tiraba
+  // TypeError, cortando launchApp/switchSection a la mitad y dejando la app
+  // clavada en el panel que viene activo de fábrica en el HTML — respondía a
+  // los clics pero no cambiaba de vista. Que falte una barra de pestañas es
+  // molesto; que no se pueda navegar, no.
+  function setDisplay(id, value) {
+    var el = document.getElementById(id);
+    if (el) el.style.display = value;
+  }
+
+  // Misma idea que setDisplay, para activar el panel de una sección.
+  function activatePanel(id) {
+    var el = document.getElementById(id);
+    if (el) el.classList.add('active');
+  }
+
   function showScreen(name) {
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('auth-screen').style.display   = 'none';
@@ -195,12 +214,12 @@
     var isAdminL  = authRol === 'AdminL';
     var canSeeAll = isAdmin || isAdminL;
     // Pestañas admin: visibles para Admin y AdminL (AdminL en modo lectura)
-    document.getElementById('drawer-usuarios').style.display = canSeeAll ? '' : 'none';
-    document.getElementById('drawer-clientes').style.display = '';
-    document.getElementById('drawer-reportes').style.display = canSeeAll ? '' : 'none';
-    document.getElementById('drawer-informes').style.display = '';
-    document.getElementById('home-card-usuarios').style.display = canSeeAll ? '' : 'none';
-    document.getElementById('home-card-reportes').style.display = canSeeAll ? '' : 'none';
+    setDisplay('drawer-usuarios', canSeeAll ? '' : 'none');
+    setDisplay('drawer-clientes', '');
+    setDisplay('drawer-reportes', canSeeAll ? '' : 'none');
+    setDisplay('drawer-informes', '');
+    setDisplay('home-card-usuarios', canSeeAll ? '' : 'none');
+    setDisplay('home-card-reportes', canSeeAll ? '' : 'none');
     // Botones de creación: solo Admin
     var btnNewUser = document.getElementById('btn-new-user');
     if (btnNewUser) btnNewUser.style.display = isAdmin ? '' : 'none';
@@ -413,33 +432,31 @@
       if (el) el.classList.toggle('active', s === name);
     });
 
-    var tabBar = document.getElementById('tab-bar');
-    var tabBarInformes = document.getElementById('tab-bar-informes');
-    var tabBarClientes = document.getElementById('tab-bar-clientes');
+    // Qué barra de pestañas corresponde a cada sección. Las que no están en el
+    // mapa (Inicio, Usuarios, Reportes) no muestran ninguna.
+    var TAB_BARS = {
+      'tab-bar':          name === 'pedidos',
+      'tab-bar-informes': name === 'informes',
+      'tab-bar-clientes': name === 'clientes'
+    };
+    Object.keys(TAB_BARS).forEach(function(id) {
+      setDisplay(id, TAB_BARS[id] ? '' : 'none');
+    });
 
     if (name === 'inicio') {
-      tabBar.style.display = 'none';
-      tabBarInformes.style.display = 'none';
-      tabBarClientes.style.display = 'none';
       ['nuevo', 'guardados'].concat(NON_PEDIDOS_PANELS.filter(function(t) { return t !== 'inicio'; }))
         .forEach(function(t) {
           var pb = document.getElementById('panel-' + t);
           if (pb) pb.classList.remove('active');
         });
-      document.getElementById('panel-inicio').classList.add('active');
+      activatePanel('panel-inicio');
     } else if (name === 'pedidos') {
-      tabBar.style.display = '';
-      tabBarInformes.style.display = 'none';
-      tabBarClientes.style.display = 'none';
       NON_PEDIDOS_PANELS.forEach(function(t) {
         var pb = document.getElementById('panel-' + t);
         if (pb) pb.classList.remove('active');
       });
       switchTab('nuevo');
     } else if (name === 'informes') {
-      tabBar.style.display = 'none';
-      tabBarInformes.style.display = '';
-      tabBarClientes.style.display = 'none';
       ['nuevo', 'guardados'].concat(NON_PEDIDOS_PANELS.filter(function(t) {
         return t !== 'nuevo-informe' && t !== 'informes' && t !== 'mapa';
       })).forEach(function(t) {
@@ -448,20 +465,14 @@
       });
       switchInformeTab(informesCurrentTab || 'nuevo-informe');
     } else if (name === 'usuarios') {
-      tabBar.style.display = 'none';
-      tabBarInformes.style.display = 'none';
-      tabBarClientes.style.display = 'none';
       ['nuevo', 'guardados'].concat(NON_PEDIDOS_PANELS.filter(function(t) { return t !== 'usuarios'; }))
         .forEach(function(t) {
           var pb = document.getElementById('panel-' + t);
           if (pb) pb.classList.remove('active');
         });
-      document.getElementById('panel-usuarios').classList.add('active');
+      activatePanel('panel-usuarios');
       loadUsers();
     } else if (name === 'clientes') {
-      tabBar.style.display = 'none';
-      tabBarInformes.style.display = 'none';
-      tabBarClientes.style.display = '';
       ['nuevo', 'guardados'].concat(NON_PEDIDOS_PANELS.filter(function(t) {
         return t !== 'clientes' && t !== 'mapa-clientes';
       })).forEach(function(t) {
@@ -470,15 +481,12 @@
       });
       switchClientesTab(clientesCurrentTab || 'clientes');
     } else if (name === 'reportes') {
-      tabBar.style.display = 'none';
-      tabBarInformes.style.display = 'none';
-      tabBarClientes.style.display = 'none';
       ['nuevo', 'guardados'].concat(NON_PEDIDOS_PANELS.filter(function(t) { return t !== 'reportes'; }))
         .forEach(function(t) {
           var pb = document.getElementById('panel-' + t);
           if (pb) pb.classList.remove('active');
         });
-      document.getElementById('panel-reportes').classList.add('active');
+      activatePanel('panel-reportes');
       loadReportes(false);
     }
     window.scrollTo(0, 0);

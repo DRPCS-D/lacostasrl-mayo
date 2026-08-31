@@ -25,6 +25,8 @@ jobs:
       url: ${{ steps.deployment.outputs.page_url }}
     steps:
       - uses: actions/checkout@v4
+      - name: Verificar que APP_VERSION y CACHE_VERSION estén sincronizados
+        run: node scripts/check-version-sync.js
       - name: Subir artefacto de Pages
         uses: actions/upload-pages-artifact@v3
         with:
