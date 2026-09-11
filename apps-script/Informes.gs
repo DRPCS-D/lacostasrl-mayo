@@ -15,6 +15,9 @@ function saveInforme(token, data) {
   var lng = parseFloat(data && data.lng);
   if (!isFinite(lat) || !isFinite(lng)) throw new Error('La ubicación es obligatoria para guardar el informe.');
 
+  var dedupe = checkSaveDedupe_('informe', [sess.username, codigoCliente, (data && data.comentario) || '', lat, lng]);
+  if (dedupe.result) return dedupe.result;
+
   var sheet = getOrCreateInformesSheet();
   var id = Utilities.getUuid().substring(0, 8).toUpperCase();
   var fecha = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm');
@@ -46,7 +49,9 @@ function saveInforme(token, data) {
   if (actualizarUbicacionCliente) {
     try { updateClientLocation(codigoCliente, lat, lng); } catch (e) {}
   }
-  return { success: true, id: id };
+  var result = { success: true, id: id };
+  rememberSaveDedupe_(dedupe, result);
+  return result;
 }
 
 function getInformes(token) {

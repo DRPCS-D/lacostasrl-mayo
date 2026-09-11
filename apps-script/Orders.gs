@@ -11,6 +11,12 @@ function saveOrder(token, data) {
   // La foto es obligatoria
   if (!data.imageFileId) throw new Error('La foto del pedido es obligatoria.');
 
+  var dedupe = checkSaveDedupe_('order', [
+    sess.username, codigoCliente, data.nroOrden, data.totalPares, data.totalPrecio,
+    data.marca, data.tipo, data.ciudad, data.obs, data.imageFileId
+  ]);
+  if (dedupe.result) return dedupe.result;
+
   var sheet = getOrCreateSheet();
   var id = Utilities.getUuid().substring(0, 8).toUpperCase();
   var fechaCarga = Utilities.formatDate(new Date(), Session.getScriptTimeZone(), 'dd/MM/yyyy HH:mm');
@@ -42,7 +48,9 @@ function saveOrder(token, data) {
   var idCell = sheet.getRange(sheet.getLastRow(), 1);
   idCell.setNumberFormat('@').setValue(id);
   bumpRevision('orders');
-  return { success: true, id: id };
+  var result = { success: true, id: id };
+  rememberSaveDedupe_(dedupe, result);
+  return result;
 }
 
 // Total general de un cliente sumando TODOS los vendedores (sin el filtro por usuario
