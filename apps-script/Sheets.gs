@@ -1,20 +1,25 @@
 // ── Sheet helpers ──
 
+// openById es lento (cientos de ms) y en un solo request se llamaba varias
+// veces (sesión, cliente, hoja, etc.). Cada request de doPost es una
+// ejecución nueva, así que este caché en variable global vive solo lo que
+// dura el request. linkSpreadsheet lo resetea al cambiar de planilla.
+var cachedSpreadsheet_ = null;
+
 function getSpreadsheet() {
+  if (cachedSpreadsheet_) return cachedSpreadsheet_;
   var ssId = PropertiesService.getScriptProperties().getProperty('SPREADSHEET_ID');
   if (!ssId) return null;
-  try { return SpreadsheetApp.openById(ssId); } catch(e) { return null; }
+  try { cachedSpreadsheet_ = SpreadsheetApp.openById(ssId); return cachedSpreadsheet_; } catch(e) { return null; }
 }
 
 function getOrCreateSpreadsheet() {
+  var existing = getSpreadsheet();
+  if (existing) return existing;
   var props = PropertiesService.getScriptProperties();
-  var ssId = props.getProperty('SPREADSHEET_ID');
-  var ss = null;
-  if (ssId) { try { ss = SpreadsheetApp.openById(ssId); } catch(e) {} }
-  if (!ss) {
-    ss = SpreadsheetApp.create('Mayorista APP');
-    props.setProperty('SPREADSHEET_ID', ss.getId());
-  }
+  var ss = SpreadsheetApp.create('Mayorista APP');
+  props.setProperty('SPREADSHEET_ID', ss.getId());
+  cachedSpreadsheet_ = ss;
   return ss;
 }
 
@@ -335,6 +340,7 @@ function linkSpreadsheet(input) {
   if (match) ssId = match[1];
   try { SpreadsheetApp.openById(ssId); } catch(e) { throw new Error('No se puede acceder a ese Google Sheet. Verificá el ID o la URL.'); }
   PropertiesService.getScriptProperties().setProperty('SPREADSHEET_ID', ssId);
+  cachedSpreadsheet_ = null;
   return true;
 }
 

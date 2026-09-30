@@ -122,7 +122,24 @@ function cleanupExpiredSessions() {
 }
 
 // true si el usuario sigue existiendo y activo en la hoja Usuarios.
+//
+// Se llama en CADA request de la API (incluido el chequeo de revisiones cada
+// 90 s de cada celular), y leer la hoja Usuarios entera cada vez era de lo
+// más lento. El resultado se cachea 5 min en CacheService, con la revisión
+// 'users' en la clave: crear/editar/borrar un usuario sube esa revisión
+// (bumpRevision('users')) y por lo tanto invalida el caché sola.
 function isUserActiveById(userId) {
+  var cache = CacheService.getScriptCache();
+  var rev = PropertiesService.getScriptProperties().getProperty('rev_users') || '0';
+  var key = 'uact_' + rev + '_' + userId;
+  var hit = cache.get(key);
+  if (hit !== null) return hit === '1';
+  var active = readUserActiveById_(userId);
+  cache.put(key, active ? '1' : '0', 300);
+  return active;
+}
+
+function readUserActiveById_(userId) {
   var ss = getSpreadsheet();
   if (!ss) return false;
   var sheet = ss.getSheetByName(USERS_SHEET_NAME);

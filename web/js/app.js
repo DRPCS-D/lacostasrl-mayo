@@ -114,6 +114,49 @@
       .catch(function() { callback(false); }); // sin red/offline → seguir con lo que ya está cargado
   }
 
+  // Carga perezosa de librerías de CDN. Cada URL se descarga una sola vez
+  // (la promesa se reutiliza); si falla, se descarta para poder reintentar.
+  var scriptLoads_ = {};
+  function loadScriptOnce_(url) {
+    if (scriptLoads_[url]) return scriptLoads_[url];
+    scriptLoads_[url] = new Promise(function(resolve, reject) {
+      var s = document.createElement('script');
+      s.src = url;
+      s.onload = function() { resolve(); };
+      s.onerror = function() { delete scriptLoads_[url]; reject(new Error('No se pudo descargar ' + url)); };
+      document.head.appendChild(s);
+    });
+    return scriptLoads_[url];
+  }
+
+  function ensurePdfJs_() {
+    if (typeof pdfjsLib !== 'undefined') return Promise.resolve();
+    return loadScriptOnce_('https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js').then(function() {
+      if (typeof pdfjsLib === 'undefined') throw new Error('pdf.js no disponible');
+      pdfjsLib.GlobalWorkerOptions.workerSrc = 'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
+    });
+  }
+
+  function ensureHeic2any_() {
+    if (typeof heic2any !== 'undefined') return Promise.resolve();
+    return loadScriptOnce_('https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js').then(function() {
+      if (typeof heic2any === 'undefined') throw new Error('heic2any no disponible');
+    });
+  }
+
+  // jspdf-autotable tiene que cargar DESPUÉS de jspdf: se engancha en
+  // window.jspdf.jsPDF.API.
+  function ensureJsPdf_() {
+    if (window.jspdf && window.jspdf.jsPDF && typeof window.jspdf.jsPDF.API.autoTable === 'function') return Promise.resolve();
+    return loadScriptOnce_('https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js').then(function() {
+      return loadScriptOnce_('https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js');
+    }).then(function() {
+      if (!window.jspdf || !window.jspdf.jsPDF || typeof window.jspdf.jsPDF.API.autoTable !== 'function') {
+        throw new Error('jsPDF/autotable no disponible'); // evita reintentar en bucle
+      }
+    });
+  }
+
   function showUpdateRequiredModal() {
     document.getElementById('loading-screen').style.display = 'none';
     document.getElementById('update-required-overlay').style.display = 'flex';
@@ -124,6 +167,29 @@
     authUsername = localStorage.getItem('authUsername');
     authRol      = localStorage.getItem('authRol');
     authFotoUrl  = localStorage.getItem('authFotoUrl');
+
+    // Arranque optimista: si el dispositivo ya tiene sesión guardada, se
+    // muestra la app al instante y la sesión se valida por detrás. Antes se
+    // esperaba hasUsers + getSession en serie (2–3 s cada uno) antes de
+    // mostrar nada. Si la sesión resulta inválida, se vuelve al login; si
+    // solo falla la red, se sigue con lo que hay (el resto de las llamadas
+    // ya manejan 'Sesión expirada' con handleAuthError).
+    if (authToken && authUsername && authRol) {
+      launchApp();
+      google.script.run
+        .withSuccessHandler(function(sess) {
+          if (!sess) { clearAuth(); showScreen('login'); return; }
+          authUsername = sess.username;
+          authRol      = sess.rol;
+          authFotoUrl  = sess.fotoUrl || '';
+          localStorage.setItem('authUsername', authUsername);
+          localStorage.setItem('authRol', authRol);
+          localStorage.setItem('authFotoUrl', authFotoUrl);
+        })
+        .withFailureHandler(function() {})
+        .getSession(authToken);
+      return;
+    }
 
     google.script.run
       .withSuccessHandler(function(usersExist) {
@@ -229,11 +295,9 @@
     // Traer del localStorage lo que haya quedado cacheado de esta sesión/dispositivo,
     // para que la primera vez que se entra a cada sección ya haya algo pintado.
     hydrateTableCaches();
-    // Cargar clientes en cache (necesario para autocomplete — todos los usuarios)
-    refreshClientsCache();
-    // Precargar pedidos en cache (necesario para el chequeo de N° Orden duplicado
-    // antes de que el usuario entre a la pestaña Pedidos)
-    preloadRecordsCache();
+    // Clientes (autocomplete) y pedidos (chequeo de N° Orden duplicado) tienen
+    // que estar en memoria antes de que el usuario entre a esas pestañas.
+    syncCachesOnLaunch();
     // Detecta cambios hechos por otros vendedores/dispositivos mientras la app
     // está abierta, sin que el usuario tenga que tocar "Actualizar".
     startBackgroundSync();
@@ -248,21 +312,25 @@
       .listClients(authToken);
   }
 
-  // Carga silenciosa de pedidos al iniciar la app (no toca la UI de la tabla).
-  // Solo llena allRecords + recordsCache para que el chequeo de duplicados funcione
-  // aunque el usuario nunca haya visitado la pestaña Pedidos en esta sesión.
-  function preloadRecordsCache() {
+  // Carga silenciosa de clientes y pedidos al iniciar la app (no toca la UI de
+  // la tabla). Antes bajaba las dos tablas completas en cada arranque, aunque
+  // ya estuvieran en el caché local (y el resultado de pedidos se descartaba
+  // en ese caso). Ahora pregunta la revisión (una llamada barata) y solo baja
+  // lo que no está en caché o cambió.
+  function syncCachesOnLaunch() {
+    var keys = ['clients', 'orders'];
     google.script.run
-      .withSuccessHandler(function(rows) {
-        // Si el usuario ya entró a Pedidos y disparó loadRecords antes que esto vuelva,
-        // no pisamos lo recién cargado.
-        if (allRecords && allRecords.length) return;
-        allRecords = rows || [];
-        recordsCache = {};
-        allRecords.forEach(function(r) { if (r['ID']) recordsCache[r['ID']] = r; });
+      .withSuccessHandler(function(revs) {
+        keys.forEach(function(key) {
+          var rev = revs && typeof revs[key] === 'number' ? revs[key] : null;
+          if (haveTableCache[key] && rev !== null && rev === knownRevisions[key]) return;
+          silentRefreshTable(key, rev);
+        });
       })
-      .withFailureHandler(function() {})
-      .getOrders(authToken);
+      .withFailureHandler(function() {
+        keys.forEach(function(key) { if (!haveTableCache[key]) silentRefreshTable(key, null); });
+      })
+      .getRevisions(authToken);
   }
 
   // ── Drawer ──
@@ -813,12 +881,8 @@
     }
 
     if (isPdf) {
-      if (typeof pdfjsLib === 'undefined') {
-        showToast('Librería PDF no cargada. Verificá tu conexión a internet.', 'error');
-        return;
-      }
       showToast('Convirtiendo PDF...', 'success');
-      pdfToAllPngs(file).then(function(pages) {
+      ensurePdfJs_().then(function() { return pdfToAllPngs(file); }).then(function(pages) {
         if (!pages.length) {
           showToast('El PDF está vacío.', 'error');
           return;
@@ -840,12 +904,9 @@
     }
 
     if (isHeic) {
-      if (typeof heic2any === 'undefined') {
-        showToast('Librería HEIC no cargada. Verificá tu conexión a internet.', 'error');
-        return;
-      }
       showToast('Convirtiendo HEIC...', 'success');
-      heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 })
+      ensureHeic2any_()
+        .then(function() { return heic2any({ blob: file, toType: 'image/jpeg', quality: 0.92 }); })
         .then(function(jpegBlob) {
           var reader = new FileReader();
           reader.onload = function(e) {
@@ -1369,14 +1430,10 @@
             }
             clearForm();
           }
-          google.script.run
-            .withSuccessHandler(function(rows) {
-              allRecords = rows || [];
-              recordsCache = {};
-              allRecords.forEach(function(r) { if (r['ID']) recordsCache[r['ID']] = r; });
-            })
-            .withFailureHandler(function() {})
-            .getOrders(authToken);
+          // Refresco de fondo por revisión: baja la tabla una sola vez y deja
+          // knownRevisions al día (antes se pedía completa acá y otra vez en
+          // el próximo chequeo de 90 s).
+          backgroundSyncTick();
         })
         .withFailureHandler(handleAuthError(function(err) {
           if (settled()) return;
@@ -2296,8 +2353,12 @@
   function exportInformesToPDF() {
     var rows = getFilteredSortedInformes();
     if (!rows.length) { showToast('No hay registros para exportar', 'error'); return; }
-    if (!window.jspdf || !window.jspdf.jsPDF) {
-      showToast('Librería PDF no cargada. Verificá tu conexión a internet.', 'error');
+    if (!window.jspdf || !window.jspdf.jsPDF || typeof window.jspdf.jsPDF.API.autoTable !== 'function') {
+      // Todavía no se descargó jsPDF: se baja ahora y se reintenta.
+      showToast('Preparando PDF...', 'success');
+      ensureJsPdf_().then(exportInformesToPDF).catch(function() {
+        showToast('Librería PDF no cargada. Verificá tu conexión a internet.', 'error');
+      });
       return;
     }
 

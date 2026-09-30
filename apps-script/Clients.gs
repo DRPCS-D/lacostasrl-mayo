@@ -6,15 +6,18 @@ function listClients(token) {
   if (!ss) return [];
   var sheet = ss.getSheetByName(CLIENTS_SHEET_NAME);
   if (!sheet || sheet.getLastRow() <= 1) return [];
-  ensureClientsCiudadZonaColumns(sheet);
+  runSchemaMigrationsOnce_('clientes', function() { ensureClientsCiudadZonaColumns(sheet); });
   var display = sheet.getDataRange().getDisplayValues();
-  var raw = sheet.getDataRange().getValues();
   // Compat: si la pestaña vieja tenía columna ID, saltarla
   var hasOldId = String(display[0][0]).toLowerCase() === 'id';
   var off = hasOldId ? 1 : 0;
   var headers = display[0];
+  // Lat/Lng van como número crudo (no getDisplayValues) porque el
+  // locale del Sheet (coma decimal) rompe el parseFloat del frontend. Se
+  // leen solo esas dos columnas en vez de repetir la lectura de toda la hoja.
   var latIdx = headers.indexOf('Lat');
   var lngIdx = headers.indexOf('Lng');
+  var raw = readRawColumns_(sheet, [latIdx, lngIdx], display.length - 1);
   return display.slice(1).map(function(row, i) {
     return {
       codigo:         row[off]     || '',
@@ -22,12 +25,22 @@ function listClients(token) {
       nombreFantasia: row[off + 2] || '',
       ciudad:         row[off + 3] || '',
       zona:           row[off + 4] || '',
-      // Lat/Lng van como número crudo (no getDisplayValues) porque el
-      // locale del Sheet (coma decimal) rompe el parseFloat del frontend.
-      lat: latIdx !== -1 ? raw[i + 1][latIdx] : '',
-      lng: lngIdx !== -1 ? raw[i + 1][lngIdx] : ''
+      lat: latIdx !== -1 ? raw[latIdx][i] : '',
+      lng: lngIdx !== -1 ? raw[lngIdx][i] : ''
     };
   });
+}
+
+// Devuelve { colIdx: [valores crudos de las filas 2..n+1] } para las columnas
+// pedidas (índices base 0; los -1 se ignoran).
+function readRawColumns_(sheet, colIdxs, nRows) {
+  var out = {};
+  if (nRows < 1) return out;
+  colIdxs.forEach(function(idx) {
+    if (idx === -1) return;
+    out[idx] = sheet.getRange(2, idx + 1, nRows, 1).getValues().map(function(r) { return r[0]; });
+  });
+  return out;
 }
 
 function createClient(token, data) {
@@ -86,9 +99,8 @@ function getClientByCodigo(codigo) {
   if (!ss) return null;
   var sheet = ss.getSheetByName(CLIENTS_SHEET_NAME);
   if (!sheet || sheet.getLastRow() <= 1) return null;
-  ensureClientsCiudadZonaColumns(sheet);
+  runSchemaMigrationsOnce_('clientes', function() { ensureClientsCiudadZonaColumns(sheet); });
   var display = sheet.getDataRange().getDisplayValues();
-  var raw = sheet.getDataRange().getValues();
   var hasOldId = String(display[0][0]).toLowerCase() === 'id';
   var off = hasOldId ? 1 : 0;
   var headers = display[0];
@@ -97,14 +109,15 @@ function getClientByCodigo(codigo) {
   var target = String(codigo).toLowerCase();
   for (var i = 1; i < display.length; i++) {
     if (String(display[i][off]).toLowerCase() === target) {
+      // Lat/Lng crudos solo de la fila encontrada (una celda cada uno).
       return {
         codigo:         display[i][off]     || '',
         razonSocial:    display[i][off + 1] || '',
         nombreFantasia: display[i][off + 2] || '',
         ciudad:         display[i][off + 3] || '',
         zona:           display[i][off + 4] || '',
-        lat: latIdx !== -1 ? raw[i][latIdx] : '',
-        lng: lngIdx !== -1 ? raw[i][lngIdx] : ''
+        lat: latIdx !== -1 ? sheet.getRange(i + 1, latIdx + 1).getValue() : '',
+        lng: lngIdx !== -1 ? sheet.getRange(i + 1, lngIdx + 1).getValue() : ''
       };
     }
   }
@@ -121,7 +134,7 @@ function updateClientLocation(codigo, lat, lng) {
   if (!ss) return;
   var sheet = ss.getSheetByName(CLIENTS_SHEET_NAME);
   if (!sheet || sheet.getLastRow() <= 1) return;
-  ensureClientsCiudadZonaColumns(sheet);
+  runSchemaMigrationsOnce_('clientes', function() { ensureClientsCiudadZonaColumns(sheet); });
   var lastCol = sheet.getLastColumn();
   var headers = sheet.getRange(1, 1, 1, lastCol).getValues()[0];
   var latIdx = headers.indexOf('Lat');

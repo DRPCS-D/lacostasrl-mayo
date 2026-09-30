@@ -15,19 +15,15 @@
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <meta name="apple-mobile-web-app-title" content="Mayorista APP">
 
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/heic2any@0.0.4/dist/heic2any.min.js"></script>
-  <!-- Generación de PDF descargable directo (exportInformesToPDF), con texto
-       real (no una captura de pantalla) — jspdf-autotable tiene que cargar
-       DESPUÉS de jspdf, se engancha en window.jspdf.jsPDF.API. -->
-  <script src="https://cdnjs.cloudflare.com/ajax/libs/jspdf/2.5.1/jspdf.umd.min.js"></script>
-  <script src="https://cdn.jsdelivr.net/npm/jspdf-autotable@3.8.2/dist/jspdf.plugin.autotable.min.js"></script>
-  <script>
-    if (typeof pdfjsLib !== 'undefined') {
-      pdfjsLib.GlobalWorkerOptions.workerSrc =
-        'https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js';
-    }
-  </script>
+  <!-- Conexión anticipada al backend: Apps Script responde con un redirect a
+       script.googleusercontent.com, y sin esto cada una de las dos conexiones
+       se abre recién en la primera llamada de la API. -->
+  <link rel="preconnect" href="https://script.google.com">
+  <link rel="preconnect" href="https://script.googleusercontent.com">
+  <!-- pdf.js, heic2any y jsPDF (+autotable) ya NO se cargan acá: sumaban unos
+       1,8 MB que bloqueaban el arranque y se usan solo al elegir un PDF/HEIC o
+       al exportar. Se descargan recién cuando hacen falta: ver loadScriptOnce_
+       y ensurePdfJs_/ensureHeic2any_/ensureJsPdf_ en app.js. -->
   <link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css">
   <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
   <link rel="stylesheet" href="https://unpkg.com/leaflet.markercluster@1.5.3/dist/MarkerCluster.css">
