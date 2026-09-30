@@ -19,7 +19,7 @@
 // (ver más abajo). scripts/check-version-sync.js lo verifica en el deploy y
 // falla si se desfasan. Quedó desfasado tres releases (sw en v75 mientras
 // APP_VERSION iba en 78) y ese fue el origen del bug de la vista trabada.
-const CACHE_VERSION = 'v79';
+const CACHE_VERSION = 'v80';
 const CACHE_NAME = 'pedidos-lacosta-' + CACHE_VERSION;
 const APP_SHELL = [
   './',

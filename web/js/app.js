@@ -632,7 +632,7 @@
   // No cancela el pedido real (no se puede desde el cliente) — solo
   // destraba la UI a los SAVE_TIMEOUT_MS y avisa para que el usuario revise
   // la lista antes de reintentar y evite duplicados.
-  var SAVE_TIMEOUT_MS = 20000;
+  var SAVE_TIMEOUT_MS = 45000;
   function armSaveTimeout(resetUi) {
     var settled = false;
     var timer = setTimeout(function() {

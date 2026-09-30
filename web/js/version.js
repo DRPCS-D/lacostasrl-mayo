@@ -8,4 +8,4 @@
 // service worker (lo que rearma el caché del app shell). Si se desfasan, los
 // usuarios con la PWA instalada quedan con archivos viejos.
 // scripts/check-version-sync.js lo verifica en el deploy.
-var APP_VERSION = '79';
+var APP_VERSION = '80';

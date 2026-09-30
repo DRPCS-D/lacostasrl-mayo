@@ -38,15 +38,34 @@ function getOrCreateSheet() {
     sheet.setColumnWidth(4, 110);
     sheet.setColumnWidth(8, 150);
   }
-  ensureImageColumn(sheet);
-  ensureUsuarioColumn(sheet);
-  ensureCodigoClienteColumn(sheet);
-  ensureObsColumn(sheet);
-  renameVendedorToTipo(sheet);
-  ensureZonaColumn(sheet);
-  backfillZonaFromClientes(sheet);
-  ensureTextIdColumn(sheet);
+  runSchemaMigrationsOnce_('pedidos', function() {
+    ensureImageColumn(sheet);
+    ensureUsuarioColumn(sheet);
+    ensureCodigoClienteColumn(sheet);
+    ensureObsColumn(sheet);
+    renameVendedorToTipo(sheet);
+    ensureZonaColumn(sheet);
+    backfillZonaFromClientes(sheet);
+    ensureTextIdColumn(sheet);
+  });
   return sheet;
+}
+
+// Las migraciones de esquema (columnas faltantes, backfill de Zona, formato
+// de la columna ID) leen hojas enteras. Antes corrían en CADA guardado,
+// edición y borrado: con la planilla creciendo, el guardado pasaba los 20 s
+// del timeout del cliente ("La conexión está lenta...") y el usuario
+// reintentaba. Ahora corren una sola vez por versión: subir SCHEMA_VERSION
+// cuando se agregue una migración nueva, o borrar la propiedad
+// 'schema_<hoja>' del script para forzarlas otra vez.
+var SCHEMA_VERSION = '1';
+
+function runSchemaMigrationsOnce_(name, migrate, force) {
+  var props = PropertiesService.getScriptProperties();
+  var key = 'schema_' + name;
+  if (!force && props.getProperty(key) === SCHEMA_VERSION) return;
+  migrate();
+  props.setProperty(key, SCHEMA_VERSION);
 }
 
 function getOrCreateInformesSheet() {
@@ -67,7 +86,7 @@ function getOrCreateInformesSheet() {
     sheet.setColumnWidth(3, 180);
     sheet.setColumnWidth(7, 260);
   }
-  ensureTextIdColumn(sheet);
+  runSchemaMigrationsOnce_('informes', function() { ensureTextIdColumn(sheet); });
   return sheet;
 }
 
